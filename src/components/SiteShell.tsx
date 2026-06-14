@@ -27,7 +27,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
                 )}
                 
                 <Link
-                  to="/minhaviagem"
+                  to="/minha-viagem"
                   className="px-3 py-2 rounded-full hover:bg-muted"
                 >
                   Minha viagem

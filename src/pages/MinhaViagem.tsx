@@ -30,6 +30,12 @@ type SolicitacaoApi = {
     verificadoResidencia: boolean;
     trilhaCursoCompleto: boolean;
   };
+  avaliacao?: {
+    id: number;
+    nota: number;
+    comentario?: string | null;
+    dataCriacao: string;
+  } | null;
 };
 
 const MINHAS_SOLICITACOES_ENDPOINT = "/solicitacoes/minhas-solicitacoes";
@@ -88,6 +94,10 @@ function tituloDoStatus(status: string, dataInicio: string, dataFim: string) {
     return "Concluída";
   }
 
+  if (statusNormalizado === "avaliada") {
+    return "Avaliada";
+  }
+
   if (statusNormalizado === "recusada") {
     return "Recusada";
   }
@@ -104,7 +114,7 @@ function classeDoStatus(status: string) {
 
   if (valor === "aberto" || valor === "aberta" || valor === "abertar") return "bg-amber-100 text-amber-900 border-amber-200";
   if (valor === "aceito" || valor === "aceita" || valor === "andamento" || valor === "em andamento") return "bg-[var(--moss)]/10 text-[var(--moss)] border-[var(--moss)]/20";
-  if (valor === "concluida") return "bg-emerald-100 text-emerald-900 border-emerald-200";
+  if (valor === "concluida" || valor === "avaliada") return "bg-emerald-100 text-emerald-900 border-emerald-200";
   if (valor === "recusada" || valor === "cancelada") return "bg-red-100 text-red-900 border-red-200";
 
   return "bg-muted text-muted-foreground border-border";
@@ -115,7 +125,7 @@ function formatoStatusChips(status: string) {
   if (valor === "aberto" || valor === "aberta" || valor === "abertar") return 1;
   if (valor === "aceito" || valor === "aceita") return 2;
   if (valor === "andamento" || valor === "em andamento") return 3;
-  if (valor === "concluida") return 4;
+  if (valor === "concluida" || valor === "avaliada") return 4;
   return 1;
 }
 
@@ -131,6 +141,15 @@ export function MinhaViagem() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [cancelando, setCancelando] = useState(false);
+  const [concluindo, setConcluindo] = useState(false);
+
+  const [modalAvaliacaoAberto, setModalAvaliacaoAberto] = useState(false);
+  const [solicitacaoParaAvaliar, setSolicitacaoParaAvaliar] = useState<SolicitacaoApi | null>(null);
+  const [nota, setNota] = useState(5);
+  const [comentario, setComentario] = useState("");
+  const [enviandoAvaliacao, setEnviandoAvaliacao] = useState(false);
+  const [erroAvaliacao, setErroAvaliacao] = useState("");
+  const [confirmarConclusaoAberto, setConfirmarConclusaoAberto] = useState(false);
 
   const carregarSolicitacoes = useCallback(async () => {
     if (!auth.ready || !auth.token) {
@@ -162,6 +181,63 @@ export function MinhaViagem() {
     void carregarSolicitacoes();
   }, [carregarSolicitacoes]);
 
+  const concluirSolicitacao = async (id: number) => {
+    if (!auth.token || concluindo) return;
+    setConcluindo(true);
+    try {
+      await api.post(`/solicitacoes/${id}/concluir`, {}, {
+        headers: { Authorization: `Bearer ${auth.token}` }
+      });
+      
+      const response = await api.get<SolicitacaoApi[]>(MINHAS_SOLICITACOES_ENDPOINT, {
+        headers: {
+          Authorization: `Bearer ${auth.token}`,
+        },
+      });
+
+      const updatedList = Array.isArray(response.data) ? response.data : [];
+      setSolicitacoes(updatedList);
+
+      const completedSol = updatedList.find(s => s.id === id);
+      if (completedSol) {
+        setSolicitacaoParaAvaliar(completedSol);
+        setModalAvaliacaoAberto(true);
+      }
+    } catch (err) {
+      setError(await readErrorMessage(err));
+    } finally {
+      setConcluindo(false);
+    }
+  };
+
+  const enviarAvaliacao = async () => {
+    if (!solicitacaoParaAvaliar || !auth.token || enviandoAvaliacao) return;
+    
+    setEnviandoAvaliacao(true);
+    setErroAvaliacao("");
+
+    try {
+      await api.post("/avaliacao", {
+        solicitacaoId: solicitacaoParaAvaliar.id,
+        madrinhaId: solicitacaoParaAvaliar.madrinhaId,
+        nota,
+        comentario: comentario.trim() || null
+      }, {
+        headers: { Authorization: `Bearer ${auth.token}` }
+      });
+
+      setModalAvaliacaoAberto(false);
+      setSolicitacaoParaAvaliar(null);
+      setNota(5);
+      setComentario("");
+      await carregarSolicitacoes();
+    } catch (err) {
+      setErroAvaliacao(await readErrorMessage(err));
+    } finally {
+      setEnviandoAvaliacao(false);
+    }
+  };
+
   const solicitacaoAtual = useMemo(() => solicitacoes[0] ?? null, [solicitacoes]);
   const solicitacoesAtivas = useMemo(() => solicitacoes.filter((solicitacao) => ehSolicitacaoAtiva(solicitacao.status)), [solicitacoes]);
   const solicitacoesHistorico = useMemo(
@@ -179,6 +255,13 @@ export function MinhaViagem() {
   const etapaAtual = useMemo(() => {
     if (!solicitacaoAtiva) return 0;
     return formatoStatusChips(solicitacaoAtiva.status);
+  }, [solicitacaoAtiva]);
+
+  const podeConcluirViagem = useMemo(() => {
+    if (!solicitacaoAtiva) return false;
+    const hoje = hojeSemHorario();
+    const fim = normalizarData(solicitacaoAtiva.dataFim);
+    return fim ? hoje >= fim : false;
   }, [solicitacaoAtiva]);
 
   const whatsappUrl = useMemo(() => {
@@ -298,11 +381,19 @@ export function MinhaViagem() {
                   <span className={`inline-flex items-center rounded-full border px-4 py-2 text-sm font-medium ${classeDoStatus(solicitacaoAtiva.status)}`}>
                     {statusExibicao}
                   </span>
+                  {solicitacaoAtiva.status.trim().toLowerCase() === "aceita" && podeConcluirViagem && (
+                    <button
+                      onClick={() => setConfirmarConclusaoAberto(true)}
+                      className="inline-flex items-center justify-center rounded-full bg-[var(--moss)] border border-transparent px-4 py-2 text-sm font-medium text-white hover:opacity-90 cursor-pointer"
+                    >
+                      Concluir viagem
+                    </button>
+                  )}
                   {podeCancelar && (
                     <button
                       onClick={() => void cancelarSolicitacao()}
                       disabled={cancelando}
-                      className="inline-flex items-center justify-center rounded-full border border-[var(--terracotta)]/30 px-4 py-2 text-sm font-medium text-[var(--terracotta)] hover:bg-[var(--terracotta)]/10 disabled:opacity-60"
+                      className="inline-flex items-center justify-center rounded-full border border-[var(--terracotta)]/30 px-4 py-2 text-sm font-medium text-[var(--terracotta)] hover:bg-[var(--terracotta)]/10 disabled:opacity-60 cursor-pointer"
                     >
                       {cancelando ? "Cancelando..." : "Cancelar solicitação"}
                     </button>
@@ -441,18 +532,43 @@ export function MinhaViagem() {
 
               <div className="space-y-3">
                 {solicitacoesHistorico.map((solicitacao) => (
-                  <div key={solicitacao.id} className="border rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div>
+                  <div key={solicitacao.id} className="border rounded-2xl p-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                    <div className="space-y-1">
                       <p className="font-semibold">{solicitacao.destino ?? solicitacao.descricao}</p>
                       <p className="text-sm text-muted-foreground">
                         {solicitacao.madrinha.nome} · {formatarData(solicitacao.dataInicio)} → {formatarData(solicitacao.dataFim)}
                       </p>
+                      {solicitacao.status.trim().toLowerCase() === "avaliada" && solicitacao.avaliacao && (
+                        <div className="mt-2 bg-muted/40 border rounded-2xl p-3 text-xs max-w-md space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-muted-foreground">Sua avaliação:</span>
+                            <span className="text-[var(--gold)]">
+                              {"★".repeat(solicitacao.avaliacao.nota)}{"☆".repeat(5 - solicitacao.avaliacao.nota)}
+                            </span>
+                          </div>
+                          {solicitacao.avaliacao.comentario && (
+                            <p className="italic text-foreground/80">"{solicitacao.avaliacao.comentario}"</p>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-3 flex-wrap sm:self-center">
+                      {solicitacao.status.trim().toLowerCase() === "concluida" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSolicitacaoParaAvaliar(solicitacao);
+                            setModalAvaliacaoAberto(true);
+                          }}
+                          className="inline-flex items-center justify-center rounded-full bg-[var(--moss)] text-white px-4 py-2 text-xs font-medium hover:opacity-90 transition cursor-pointer"
+                        >
+                          Avaliar Madrinha
+                        </button>
+                      )}
                       <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${classeDoStatus(solicitacao.status)}`}>
                         {tituloDoStatus(solicitacao.status, solicitacao.dataInicio, solicitacao.dataFim)}
                       </span>
-                      <span className="text-sm text-muted-foreground">R$ {solicitacao.valor}</span>
+                      <span className="text-sm font-medium">R$ {solicitacao.valor}</span>
                     </div>
                   </div>
                 ))}
@@ -460,6 +576,116 @@ export function MinhaViagem() {
             </div>
           </div>
         )}
+
+      {confirmarConclusaoAberto && solicitacaoAtiva && (
+        <div className="fixed inset-0 z-55 flex items-center justify-center bg-black/55 backdrop-blur-sm p-4">
+          <div className="bg-card border w-full max-w-md rounded-[2rem] p-8 space-y-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="space-y-2">
+              <h3 className="text-2xl font-serif">Concluir Viagem</h3>
+              <p className="text-sm text-muted-foreground">
+                Tem certeza que deseja marcar esta viagem como concluída? Esta ação não pode ser desfeita.
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmarConclusaoAberto(false)}
+                className="flex-1 border rounded-full py-3.5 text-sm font-medium hover:bg-muted transition cursor-pointer"
+                disabled={concluindo}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmarConclusaoAberto(false);
+                  void concluirSolicitacao(solicitacaoAtiva.id);
+                }}
+                className="flex-1 bg-[var(--moss)] text-white rounded-full py-3.5 text-sm font-medium hover:opacity-90 transition cursor-pointer disabled:opacity-60"
+                disabled={concluindo}
+              >
+                {concluindo ? "Concluindo..." : "Sim, concluir"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalAvaliacaoAberto && solicitacaoParaAvaliar && (
+        <div className="fixed inset-0 z-55 flex items-center justify-center bg-black/55 backdrop-blur-sm p-4">
+          <div className="bg-card border w-full max-w-md rounded-[2rem] p-8 space-y-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="space-y-2">
+              <h3 className="text-2xl font-serif">Avaliar Madrinha</h3>
+              <p className="text-sm text-muted-foreground">
+                Como foi sua experiência com a madrinha <strong>{solicitacaoParaAvaliar.madrinha.nome}</strong> na sua viagem para {solicitacaoParaAvaliar.destino ?? solicitacaoParaAvaliar.descricao}?
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block">Sua nota</label>
+              <div className="flex gap-2">
+                {[1, 2, 3, 4, 5].map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => setNota(num)}
+                    className="text-3xl hover:scale-110 transition cursor-pointer font-medium"
+                  >
+                    {num <= nota ? (
+                      <span className="text-[var(--gold)]">★</span>
+                    ) : (
+                      <span className="text-muted-foreground/30">★</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="block space-y-2">
+              <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Comentário / Feedback (opcional)</span>
+              <textarea
+                value={comentario}
+                onChange={(e) => setComentario(e.target.value)}
+                placeholder="Ex: Ela foi maravilhosa, me acolheu super bem..."
+                rows={4}
+                className="w-full rounded-2xl border border-black/10 bg-background px-4 py-3 text-sm outline-none transition focus:border-[var(--moss)] focus:ring-2 focus:ring-[var(--moss)]/15 resize-none"
+              />
+            </label>
+
+            {erroAvaliacao && (
+              <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2">
+                {erroAvaliacao}
+              </p>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalAvaliacaoAberto(false);
+                  setSolicitacaoParaAvaliar(null);
+                  setNota(5);
+                  setComentario("");
+                  setErroAvaliacao("");
+                }}
+                className="flex-1 border rounded-full py-3.5 text-sm font-medium hover:bg-muted transition cursor-pointer"
+                disabled={enviandoAvaliacao}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={enviarAvaliacao}
+                className="flex-1 bg-[var(--moss)] text-white rounded-full py-3.5 text-sm font-medium hover:opacity-90 transition cursor-pointer disabled:opacity-60"
+                disabled={enviandoAvaliacao}
+              >
+                {enviandoAvaliacao ? "Enviando..." : "Enviar avaliação"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </SiteShell>
   );

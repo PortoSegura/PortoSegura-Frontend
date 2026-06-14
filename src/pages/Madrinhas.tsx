@@ -8,7 +8,7 @@ import { SiteShell } from "@/components/SiteShell";
 
 const OBTER_MADRINHAS_ENDPOINT = "madrinha";
 
-type Ordenacao = "avaliacao" | "preco" | "acolhimentos";
+type Ordenacao = "nome" | "avaliacao" | "preco" | "acolhimentos";
 
 type MadrinhaSummaryApi = {
   id: number;
@@ -21,6 +21,7 @@ type MadrinhaSummaryApi = {
   estado: string;
   servicos: string[];
   qtdSolicitacoes: number;
+  mediaAvaliacao: number;
 };
 
 type MadrinhaCard = MadrinhaSummaryApi & {
@@ -149,6 +150,10 @@ export function Madrinhas() {
         return b.qtdSolicitacoes - a.qtdSolicitacoes;
       }
 
+      if (ordem === "avaliacao") {
+        return b.mediaAvaliacao - a.mediaAvaliacao;
+      }
+
       return a.nome.localeCompare(b.nome, "pt-BR");
     });
 
@@ -202,7 +207,8 @@ export function Madrinhas() {
             onChange={(e) => setOrdem(e.target.value as Ordenacao)}
             className="mt-1 w-full bg-background border rounded-xl px-3 py-2.5 text-sm"
           >
-            <option value="avaliacao">Nome</option>
+            <option value="avaliacao">Melhor avaliação</option>
+            <option value="nome">Nome</option>
             <option value="preco">Menor preço</option>
             <option value="acolhimentos">Mais acolhimentos</option>
           </select>
@@ -235,8 +241,15 @@ export function Madrinhas() {
                 )}
               </div>
               <div>
-                <h3 className="text-lg leading-tight">{m.nome}</h3>
-                <p className="text-sm text-[var(--moss)] inline-flex items-center gap-1 font-medium">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-lg leading-tight">{m.nome}</h3>
+                  {m.mediaAvaliacao > 0 && (
+                    <span className="inline-flex items-center gap-0.5 text-xs text-[var(--gold)] font-medium bg-[var(--gold)]/10 px-1.5 py-0.5 rounded-md">
+                      ★ {m.mediaAvaliacao.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-[var(--moss)] inline-flex items-center gap-1 font-medium mt-0.5">
                   <MapPin size={13} /> {m.cidade}, {m.estado}
                 </p>
               </div>

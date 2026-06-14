@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Avatar } from "@radix-ui/react-avatar";
 import {
   Sparkles,
@@ -9,8 +10,9 @@ import {
   Heart,
 } from "lucide-react";
 import heroImg from "@/assets/hero.jpg";
-import {useNavigate} from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { SiteShell } from "@/components/SiteShell";
+import { useAuth } from "@/context/auth-context";
 
 function Badge({
   children,
@@ -34,8 +36,14 @@ function Badge({
 }
 
 export function Home() {
-
   const navigate = useNavigate();
+  const auth = useAuth();
+
+  useEffect(() => {
+    if (auth.ready && auth.isAuthenticated) {
+      navigate({ to: "/minha-viagem" });
+    }
+  }, [auth.isAuthenticated, auth.ready, navigate]);
 
   return (
     

@@ -19,6 +19,14 @@ type MadrinhaDetalheApi = {
   estado: string;
   servicos: string[];
   qtdSolicitacoes: number;
+  mediaAvaliacao: number;
+  avaliacoes?: Array<{
+    id: number;
+    nota: number;
+    comentario: string;
+    dataCriacao: string;
+    nomeUsuaria: string;
+  }> | null;
 };
 
 function avatarFallback(nome: string) {
@@ -94,6 +102,22 @@ export function DetalhesMadrinha({ id }: { id: string }) {
 
   const servicos = useMemo(() => madrinha?.servicos ?? [], [madrinha?.servicos]);
 
+  const avaliacoesList = useMemo(() => madrinha?.avaliacoes ?? [], [madrinha?.avaliacoes]);
+
+  const contagemAvaliacoes = useMemo(() => {
+    const counts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    avaliacoesList.forEach((a) => {
+      const nota = Math.min(5, Math.max(1, a.nota)) as 1 | 2 | 3 | 4 | 5;
+      counts[nota] = (counts[nota] || 0) + 1;
+    });
+
+    return [5, 4, 3, 2, 1].map((nota) => {
+      const count = counts[nota as 1 | 2 | 3 | 4 | 5];
+      const pct = avaliacoesList.length > 0 ? (count / avaliacoesList.length) * 100 : 0;
+      return { nota, count, pct };
+    });
+  }, [avaliacoesList]);
+
   if (!auth.ready || !auth.isAuthenticated) {
     return null;
   }
@@ -168,22 +192,44 @@ export function DetalhesMadrinha({ id }: { id: string }) {
               </div>
 
               <div className="rounded-3xl bg-[var(--sand)]/35 p-6 border">
-                <h2 className="text-xl mb-3">Avaliações</h2>
+                <h2 className="text-xl mb-3">
+                  Avaliações {madrinha.mediaAvaliacao > 0 && `(★ ${madrinha.mediaAvaliacao.toFixed(1)})`}
+                </h2>
                 <div className="space-y-1.5">
-                  {AVALIACOES_MOCK.map(({ nota, count }) => {
-                    const pct = 0;
-
-                    return (
-                      <div key={nota} className="flex items-center gap-3 text-sm">
-                        <span className="w-8 text-muted-foreground">{nota}★</span>
-                        <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                          <div className="h-full bg-[var(--gold)]" style={{ width: `${pct}%` }} />
-                        </div>
-                        <span className="w-8 text-right text-muted-foreground">{count}</span>
+                  {contagemAvaliacoes.map(({ nota, count, pct }) => (
+                    <div key={nota} className="flex items-center gap-3 text-sm">
+                      <span className="w-8 text-muted-foreground">{nota}★</span>
+                      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                        <div className="h-full bg-[var(--gold)]" style={{ width: `${pct}%` }} />
                       </div>
-                    );
-                  })}
+                      <span className="w-8 text-right text-muted-foreground">{count}</span>
+                    </div>
+                  ))}
                 </div>
+
+                {avaliacoesList.length > 0 ? (
+                  <div className="mt-6 space-y-4 pt-4 border-t border-border/60">
+                    <p className="text-sm font-semibold mb-2">Comentários das viajantes</p>
+                    <div className="max-h-60 overflow-y-auto space-y-3 pr-1">
+                      {avaliacoesList.map((a) => (
+                        <div key={a.id} className="bg-background/40 border rounded-2xl p-3 text-xs space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold">{a.nomeUsuaria}</span>
+                            <span className="text-[var(--gold)] font-medium">
+                              {"★".repeat(a.nota)}{"☆".repeat(5 - a.nota)}
+                            </span>
+                          </div>
+                          {a.comentario && <p className="text-foreground/85 leading-relaxed">{a.comentario}</p>}
+                          <p className="text-[10px] text-muted-foreground">
+                            {new Date(a.dataCriacao).toLocaleDateString("pt-BR")}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-4 italic text-center">Nenhum comentário enviado ainda.</p>
+                )}
               </div>
             </div>
 
@@ -207,7 +253,7 @@ export function DetalhesMadrinha({ id }: { id: string }) {
             usuariaId={auth.user?.id ?? 0}
             token={auth.token ?? ""}
             onVoltar={() => setMostrandoFluxo(false)}
-            onConfirmar={() => navigate({ to: "/minhaviagem" })}
+            onConfirmar={() => navigate({ to: "/minha-viagem" })}
           />
         )}
       </div>

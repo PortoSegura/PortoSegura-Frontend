@@ -9,7 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as MinhaviagemRouteImport } from './routes/minhaviagem'
+import { Route as MinhaViagemRouteImport } from './routes/minha-viagem'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JornadaMadrinhaRouteImport } from './routes/jornada-madrinha'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -20,9 +20,9 @@ import { Route as AreamadrinhaRouteImport } from './routes/areamadrinha'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as MadrinhaIdRouteImport } from './routes/madrinha.$id'
 
-const MinhaviagemRoute = MinhaviagemRouteImport.update({
-  id: '/minhaviagem',
-  path: '/minhaviagem',
+const MinhaViagemRoute = MinhaViagemRouteImport.update({
+  id: '/minha-viagem',
+  path: '/minha-viagem',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -80,7 +80,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/jornada-madrinha': typeof JornadaMadrinhaRoute
   '/login': typeof LoginRoute
-  '/minhaviagem': typeof MinhaviagemRoute
+  '/minha-viagem': typeof MinhaViagemRoute
   '/madrinha/$id': typeof MadrinhaIdRoute
 }
 export interface FileRoutesByTo {
@@ -92,7 +92,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/jornada-madrinha': typeof JornadaMadrinhaRoute
   '/login': typeof LoginRoute
-  '/minhaviagem': typeof MinhaviagemRoute
+  '/minha-viagem': typeof MinhaViagemRoute
   '/madrinha/$id': typeof MadrinhaIdRoute
 }
 export interface FileRoutesById {
@@ -105,7 +105,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/jornada-madrinha': typeof JornadaMadrinhaRoute
   '/login': typeof LoginRoute
-  '/minhaviagem': typeof MinhaviagemRoute
+  '/minha-viagem': typeof MinhaViagemRoute
   '/madrinha/$id': typeof MadrinhaIdRoute
 }
 export interface FileRouteTypes {
@@ -119,7 +119,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/jornada-madrinha'
     | '/login'
-    | '/minhaviagem'
+    | '/minha-viagem'
     | '/madrinha/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -131,7 +131,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/jornada-madrinha'
     | '/login'
-    | '/minhaviagem'
+    | '/minha-viagem'
     | '/madrinha/$id'
   id:
     | '__root__'
@@ -143,7 +143,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/jornada-madrinha'
     | '/login'
-    | '/minhaviagem'
+    | '/minha-viagem'
     | '/madrinha/$id'
   fileRoutesById: FileRoutesById
 }
@@ -156,17 +156,17 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   JornadaMadrinhaRoute: typeof JornadaMadrinhaRoute
   LoginRoute: typeof LoginRoute
-  MinhaviagemRoute: typeof MinhaviagemRoute
+  MinhaViagemRoute: typeof MinhaViagemRoute
   MadrinhaIdRoute: typeof MadrinhaIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/minhaviagem': {
-      id: '/minhaviagem'
-      path: '/minhaviagem'
-      fullPath: '/minhaviagem'
-      preLoaderRoute: typeof MinhaviagemRouteImport
+    '/minha-viagem': {
+      id: '/minha-viagem'
+      path: '/minha-viagem'
+      fullPath: '/minha-viagem'
+      preLoaderRoute: typeof MinhaViagemRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -244,7 +244,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   JornadaMadrinhaRoute: JornadaMadrinhaRoute,
   LoginRoute: LoginRoute,
-  MinhaviagemRoute: MinhaviagemRoute,
+  MinhaViagemRoute: MinhaViagemRoute,
   MadrinhaIdRoute: MadrinhaIdRoute,
 }
 export const routeTree = rootRouteImport

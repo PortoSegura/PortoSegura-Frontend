@@ -16,7 +16,7 @@ export function Login() {
 
   useEffect(() => {
     if (auth.ready && auth.isAuthenticated) {
-      navigate({ to: "/" });
+      navigate({ to: "/minha-viagem" });
     }
   }, [auth.isAuthenticated, auth.ready, navigate]);
 
@@ -55,7 +55,7 @@ export function Login() {
       }
 
       auth.login(token, usuario);
-      navigate({ to: "/" });
+      navigate({ to: "/minha-viagem" });
     } catch (err) {
       setError(await readErrorMessage(err));
     } finally {
