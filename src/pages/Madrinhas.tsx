@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Filter, Heart, MapPin, Sparkles } from "lucide-react";
+import { ArrowRight, Filter, Heart, MapPin, Search, Sparkles } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { api } from "@/lib/api";
 import { useRequireAuth } from "@/context/auth-context";
@@ -86,6 +86,8 @@ export function Madrinhas() {
   const [madrinhas, setMadrinhas] = useState<MadrinhaCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [ida, setIda] = useState("");
+  const [volta, setVolta] = useState("");
 
   useEffect(() => {
     let ativo = true;
@@ -138,6 +140,13 @@ export function Madrinhas() {
     };
   }, [auth.ready, auth.token, destino, precoMax]);
 
+  const dias = useMemo(() => {
+    if (!ida || !volta) return 0;
+    const ms = new Date(volta).getTime() - new Date(ida).getTime();
+    const diferenca = Math.round(ms / 86400000);
+    return diferenca > 0 ? diferenca : 0;
+  }, [ida, volta]);
+
   const lista = useMemo(() => {
     const filtradas = [...madrinhas];
 
@@ -174,45 +183,88 @@ export function Madrinhas() {
         </p>
       </div>
 
-      <div className="bg-card border rounded-3xl p-5 sm:p-6 grid md:grid-cols-3 gap-4 mb-8 shadow-sm">
-        <label className="block">
-          <span className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1">
-            <MapPin size={12} /> Destino
-          </span>
-          <input
-            value={destino}
-            onChange={(e) => setDestino(e.target.value)}
-            placeholder="Ex: Bonito, Floripa..."
-            className="mt-1 w-full bg-background border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--moss)]"
-          />
-        </label>
-        <label className="block">
-          <span className="text-xs font-medium text-muted-foreground">Diária até R$ {precoMax}</span>
-          <input
-            type="range"
-            min={10}
-            max={500}
-            step={5}
-            value={precoMax}
-            onChange={(e) => setPrecoMax(Number(e.target.value))}
-            className="mt-3 w-full accent-[var(--moss)]"
-          />
-        </label>
-        <label className="block">
-          <span className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1">
-            <Filter size={12} /> Ordenar
-          </span>
-          <select
-            value={ordem}
-            onChange={(e) => setOrdem(e.target.value as Ordenacao)}
-            className="mt-1 w-full bg-background border rounded-xl px-3 py-2.5 text-sm"
-          >
-            <option value="avaliacao">Melhor avaliação</option>
-            <option value="nome">Nome</option>
-            <option value="preco">Menor preço</option>
-            <option value="acolhimentos">Mais acolhimentos</option>
-          </select>
-        </label>
+      <div className="bg-card border rounded-3xl p-6 sm:p-8 space-y-6 mb-8 shadow-sm">
+        <div className="space-y-2">
+          <label className="block">
+            <span className="text-sm font-semibold text-foreground inline-flex items-center gap-2">
+              <MapPin size={16} className="text-[var(--moss)]" /> Para onde você quer viajar?
+            </span>
+            <div className="relative mt-2">
+              <input
+                value={destino}
+                onChange={(e) => setDestino(e.target.value)}
+                placeholder="Busque cidades ou estados (Ex: Bonito, Salvador, SC...)"
+                className="w-full bg-background border rounded-2xl pl-12 pr-4 py-4 text-base focus:outline-none focus:ring-2 focus:ring-[var(--moss)] shadow-inner transition placeholder:text-muted-foreground/60"
+              />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
+            </div>
+          </label>
+        </div>
+
+        <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-5 pt-4 border-t border-border/60">
+          <label className="block">
+            <span className="text-xs font-semibold text-muted-foreground block mb-2 uppercase tracking-wider">
+              Data de Ida
+            </span>
+            <input
+              type="date"
+              value={ida}
+              onChange={(e) => {
+                setIda(e.target.value);
+                if (volta && e.target.value && volta <= e.target.value) {
+                  setVolta("");
+                }
+              }}
+              min={new Date().toLocaleDateString("en-CA")}
+              className="w-full bg-background border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--moss)]"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold text-muted-foreground block mb-2 uppercase tracking-wider">
+              Data de Volta
+            </span>
+            <input
+              type="date"
+              value={volta}
+              onChange={(e) => setVolta(e.target.value)}
+              min={ida || new Date().toLocaleDateString("en-CA")}
+              className="w-full bg-background border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--moss)]"
+            />
+          </label>
+
+          <label className="block">
+            <div className="flex justify-between text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+              <span>Preço da diária</span>
+              <span className="text-[var(--moss)] font-bold">R$ {precoMax}</span>
+            </div>
+            <input
+              type="range"
+              min={10}
+              max={500}
+              step={5}
+              value={precoMax}
+              onChange={(e) => setPrecoMax(Number(e.target.value))}
+              className="w-full mt-2 accent-[var(--moss)]"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold text-muted-foreground block mb-2 uppercase tracking-wider">
+              Ordenar por
+            </span>
+            <select
+              value={ordem}
+              onChange={(e) => setOrdem(e.target.value as Ordenacao)}
+              className="w-full bg-background border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--moss)] h-[42px]"
+            >
+              <option value="avaliacao">Melhor avaliação</option>
+              <option value="nome">Nome</option>
+              <option value="preco">Menor preço</option>
+              <option value="acolhimentos">Mais acolhimentos</option>
+            </select>
+          </label>
+        </div>
       </div>
 
       {loading && <p className="text-sm text-muted-foreground">Carregando madrinhas...</p>}
@@ -229,7 +281,14 @@ export function Madrinhas() {
           <button
             key={m.id}
             type="button"
-            onClick={() => navigate({ to: "/madrinha/$id", params: { id: String(m.id) } })}
+            onClick={() => navigate({ 
+              to: "/madrinha/$id", 
+              params: { id: String(m.id) },
+              search: { 
+                ida: ida || undefined, 
+                volta: volta || undefined 
+              }
+            })}
             className="text-left bg-card border rounded-3xl p-6 hover:shadow-lg hover:-translate-y-0.5 transition group relative"
           >
             <div className="flex items-center gap-4 mb-4">
@@ -283,9 +342,23 @@ export function Madrinhas() {
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">Acolhimentos na plataforma</p>
               </div>
-              <div className="text-right">
-                <p className="font-serif text-xl text-[var(--terracotta)]">R$ {m.precoDiaria}</p>
-                <p className="text-xs text-muted-foreground">por diária</p>
+              <div className="text-right space-y-0.5">
+                {dias > 0 ? (
+                  <>
+                    <p className="text-xs text-muted-foreground font-medium">Custo total ({dias} {dias === 1 ? "diária" : "diárias"})</p>
+                    <p className="font-serif text-2xl text-[var(--terracotta)] font-bold">
+                      R$ {m.precoDiaria * dias}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      R$ {m.precoDiaria} / diária
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-serif text-xl text-[var(--terracotta)]">R$ {m.precoDiaria}</p>
+                    <p className="text-xs text-muted-foreground">por diária</p>
+                  </>
+                )}
               </div>
             </div>
           </button>

@@ -48,7 +48,15 @@ const AVALIACOES_MOCK = [5, 4, 3, 2, 1].map((nota) => ({
   count: 0,
 }));
 
-export function DetalhesMadrinha({ id }: { id: string }) {
+export function DetalhesMadrinha({ 
+  id, 
+  initialIda, 
+  initialVolta 
+}: { 
+  id: string; 
+  initialIda?: string; 
+  initialVolta?: string; 
+}) {
   const auth = useRequireAuth();
   const navigate = useNavigate();
   const [madrinha, setMadrinha] = useState<MadrinhaDetalheApi | null>(null);
@@ -101,6 +109,13 @@ export function DetalhesMadrinha({ id }: { id: string }) {
   }, [auth.ready, auth.token, id]);
 
   const servicos = useMemo(() => madrinha?.servicos ?? [], [madrinha?.servicos]);
+
+  const diasPreSel = useMemo(() => {
+    if (!initialIda || !initialVolta) return 0;
+    const ms = new Date(initialVolta).getTime() - new Date(initialIda).getTime();
+    const diff = Math.round(ms / 86400000);
+    return diff > 0 ? diff : 0;
+  }, [initialIda, initialVolta]);
 
   const avaliacoesList = useMemo(() => madrinha?.avaliacoes ?? [], [madrinha?.avaliacoes]);
 
@@ -162,9 +177,19 @@ export function DetalhesMadrinha({ id }: { id: string }) {
                 </div>
               </div>
 
-              <div className="text-right sm:border-l sm:pl-6">
-                <p className="font-serif text-4xl text-[var(--terracotta)]">R$ {madrinha.precoDiaria}</p>
-                <p className="text-xs text-muted-foreground">por diária de acompanhamento</p>
+              <div className="text-right sm:border-l sm:pl-6 space-y-0.5">
+                {diasPreSel > 0 ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">Custo total ({diasPreSel} {diasPreSel === 1 ? "diária" : "diárias"})</p>
+                    <p className="font-serif text-4xl text-[var(--terracotta)] font-bold">R$ {madrinha.precoDiaria * diasPreSel}</p>
+                    <p className="text-xs text-muted-foreground">R$ {madrinha.precoDiaria} / diária</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-serif text-4xl text-[var(--terracotta)]">R$ {madrinha.precoDiaria}</p>
+                    <p className="text-xs text-muted-foreground">por diária de acompanhamento</p>
+                  </>
+                )}
               </div>
             </div>
 
@@ -191,46 +216,67 @@ export function DetalhesMadrinha({ id }: { id: string }) {
                 </div>
               </div>
 
-              <div className="rounded-3xl bg-[var(--sand)]/35 p-6 border">
-                <h2 className="text-xl mb-3">
-                  Avaliações {madrinha.mediaAvaliacao > 0 && `(★ ${madrinha.mediaAvaliacao.toFixed(1)})`}
-                </h2>
-                <div className="space-y-1.5">
-                  {contagemAvaliacoes.map(({ nota, count, pct }) => (
-                    <div key={nota} className="flex items-center gap-3 text-sm">
-                      <span className="w-8 text-muted-foreground">{nota}★</span>
-                      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                        <div className="h-full bg-[var(--gold)]" style={{ width: `${pct}%` }} />
+              <div className="rounded-3xl bg-[var(--sand)]/35 p-6 border flex flex-col justify-between">
+                <div>
+                  <h2 className="text-xl mb-1">Resumo das Avaliações</h2>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {madrinha.mediaAvaliacao > 0 
+                      ? `${madrinha.mediaAvaliacao.toFixed(1)} de 5 estrelas` 
+                      : "Sem avaliações ainda"}
+                  </p>
+                  <div className="space-y-2">
+                    {contagemAvaliacoes.map(({ nota, count, pct }) => (
+                      <div key={nota} className="flex items-center gap-3 text-sm">
+                        <span className="w-8 text-muted-foreground">{nota}★</span>
+                        <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                          <div className="h-full bg-[var(--gold)]" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="w-8 text-right text-muted-foreground">{count}</span>
                       </div>
-                      <span className="w-8 text-right text-muted-foreground">{count}</span>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
+                <div className="pt-4 border-t border-border/40 mt-4 text-center text-sm font-semibold text-muted-foreground">
+                  {avaliacoesList.length === 1 ? "1 avaliação no total" : `${avaliacoesList.length} avaliações no total`}
+                </div>
+              </div>
+            </div>
 
-                {avaliacoesList.length > 0 ? (
-                  <div className="mt-6 space-y-4 pt-4 border-t border-border/60">
-                    <p className="text-sm font-semibold mb-2">Comentários das viajantes</p>
-                    <div className="max-h-60 overflow-y-auto space-y-3 pr-1">
-                      {avaliacoesList.map((a) => (
-                        <div key={a.id} className="bg-background/40 border rounded-2xl p-3 text-xs space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="font-semibold">{a.nomeUsuaria}</span>
-                            <span className="text-[var(--gold)] font-medium">
-                              {"★".repeat(a.nota)}{"☆".repeat(5 - a.nota)}
-                            </span>
-                          </div>
-                          {a.comentario && <p className="text-foreground/85 leading-relaxed">{a.comentario}</p>}
+            {/* Reviews Section */}
+            <div className="border-t pt-10 mt-10 space-y-6">
+              <h2 className="text-2xl font-serif">Comentários e Experiências ({avaliacoesList.length})</h2>
+              {avaliacoesList.length > 0 ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {avaliacoesList.map((a) => (
+                    <div key={a.id} className="bg-card border rounded-3xl p-6 space-y-3 shadow-sm hover:shadow-md transition">
+                      <div className="flex items-center justify-between border-b pb-2">
+                        <div>
+                          <p className="font-semibold text-sm">{a.nomeUsuaria}</p>
                           <p className="text-[10px] text-muted-foreground">
                             {new Date(a.dataCriacao).toLocaleDateString("pt-BR")}
                           </p>
                         </div>
-                      ))}
+                        <div className="text-right">
+                          <span className="text-[var(--gold)] text-sm font-medium">
+                            {"★".repeat(a.nota)}{"☆".repeat(5 - a.nota)}
+                          </span>
+                        </div>
+                      </div>
+                      {a.comentario ? (
+                        <p className="text-sm text-foreground/80 italic leading-relaxed">
+                          "{a.comentario}"
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground italic">Sem comentário escrito.</p>
+                      )}
                     </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground mt-4 italic text-center">Nenhum comentário enviado ainda.</p>
-                )}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-3xl border bg-muted/20 p-8 text-center text-muted-foreground italic">
+                  Nenhum comentário enviado para esta Madrinha ainda.
+                </div>
+              )}
             </div>
 
             <div className="mt-10 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between border-t pt-7">
@@ -252,6 +298,8 @@ export function DetalhesMadrinha({ id }: { id: string }) {
             madrinha={madrinha}
             usuariaId={auth.user?.id ?? 0}
             token={auth.token ?? ""}
+            initialIda={initialIda}
+            initialVolta={initialVolta}
             onVoltar={() => setMostrandoFluxo(false)}
             onConfirmar={() => navigate({ to: "/minha-viagem" })}
           />
@@ -265,19 +313,23 @@ function FluxoSolicitacao({
   madrinha,
   usuariaId,
   token,
+  initialIda,
+  initialVolta,
   onVoltar,
   onConfirmar,
 }: {
   madrinha: MadrinhaDetalheApi;
   usuariaId: number;
   token: string;
+  initialIda?: string;
+  initialVolta?: string;
   onVoltar: () => void;
   onConfirmar: () => void;
 }) {
-  const [passo, setPasso] = useState(1);
+  const [passo, setPasso] = useState(initialIda && initialVolta ? 2 : 1);
   const [destino, setDestino] = useState(`${madrinha.cidade}, ${madrinha.estado}`);
-  const [ida, setIda] = useState("");
-  const [volta, setVolta] = useState("");
+  const [ida, setIda] = useState(initialIda ?? "");
+  const [volta, setVolta] = useState(initialVolta ?? "");
   const [erroDatas, setErroDatas] = useState("");
   const [erroSolicitacao, setErroSolicitacao] = useState("");
   const [criandoSolicitacao, setCriandoSolicitacao] = useState(false);
