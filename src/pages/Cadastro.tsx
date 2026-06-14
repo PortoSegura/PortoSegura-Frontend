@@ -146,6 +146,50 @@ export function Cadastro() {
     previewUrl: "",
   });
 
+  const [fotoFile, setFotoFile] = useState<File | null>(null);
+  const [fotoPreviewUrl, setFotoPreviewUrl] = useState<string>("");
+  const [fotoError, setFotoError] = useState<string>("");
+
+  const handleFotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFotoError("");
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!allowedMimeTypes.includes(file.type.toLowerCase()) && !file.name.toLowerCase().endsWith(".webp") && !file.name.toLowerCase().endsWith(".jpg") && !file.name.toLowerCase().endsWith(".jpeg") && !file.name.toLowerCase().endsWith(".png")) {
+      setFotoError("Formato de imagem inválido. Use JPG, JPEG, PNG ou WEBP.");
+      return;
+    }
+
+    const maxSizeBytes = 5 * 1024 * 1024; // 5 MB
+    if (file.size > maxSizeBytes) {
+      setFotoError("O arquivo excede o tamanho máximo permitido (5 MB).");
+      return;
+    }
+
+    setFotoFile(file);
+    if (fotoPreviewUrl) {
+      URL.revokeObjectURL(fotoPreviewUrl);
+    }
+    setFotoPreviewUrl(URL.createObjectURL(file));
+  };
+
+  const handleRemoverFoto = () => {
+    setFotoFile(null);
+    if (fotoPreviewUrl) {
+      URL.revokeObjectURL(fotoPreviewUrl);
+      setFotoPreviewUrl("");
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (fotoPreviewUrl) {
+        URL.revokeObjectURL(fotoPreviewUrl);
+      }
+    };
+  }, [fotoPreviewUrl]);
+
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -437,6 +481,30 @@ export function Cadastro() {
         throw new Error(await readErrorMessage(uploadResponse));
       }
 
+      let publicFotoUrl: string | null = null;
+      if (fotoFile) {
+        const uploadFotoReq = await api.post<SolicitarUploadResponse>(SOLICITAR_UPLOAD_ENDPOINT, {
+          tipoDocumento: "FotoPerfil",
+          tipoMime: fotoFile.type || "image/jpeg",
+          tamanhoEmBytes: fotoFile.size,
+        });
+
+        const uploadFotoRes = await fetch(uploadFotoReq.data.url, {
+          method: "PUT",
+          headers: {
+            "Content-Type": fotoFile.type || "image/jpeg",
+            "x-ms-blob-type": "BlockBlob",
+          },
+          body: fotoFile,
+        });
+
+        if (!uploadFotoRes.ok) {
+          throw new Error("Falha ao enviar a foto de perfil: " + (await readErrorMessage(uploadFotoRes)));
+        }
+
+        publicFotoUrl = uploadFotoReq.data.nomeArquivo;
+      }
+
       await api.post(CADASTRAR_USUARIA_ENDPOINT, {
         nome: form.nome,
         idade: form.idade,
@@ -449,7 +517,8 @@ export function Cadastro() {
         linkedin: form.linkedin?.trim() || null,
         facebook: form.facebook?.trim() || null,
         bio: form.bio,
-        videoVerificacao: nomeArquivo
+        videoVerificacao: nomeArquivo,
+        fotoPerfilUrl: publicFotoUrl
       });
 
       setEnviado(true);
@@ -607,6 +676,46 @@ export function Cadastro() {
                   placeholder="BA"
                   required
                 />
+              </div>
+              <div className="space-y-2 border-t pt-4">
+                <span className="text-sm font-medium text-foreground block">Foto de perfil (opcional)</span>
+                <div className="flex items-center gap-4 mt-2">
+                  {fotoPreviewUrl ? (
+                    <div className="relative w-16 h-16 rounded-full overflow-hidden border">
+                      <img src={fotoPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center border border-dashed text-muted-foreground text-xs text-center font-medium">
+                      Sem foto
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex gap-2">
+                      <label className="cursor-pointer bg-white border hover:bg-muted text-foreground px-4 py-2 rounded-xl text-xs font-semibold shadow-sm inline-block">
+                        Selecionar foto
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFotoChange}
+                          className="hidden"
+                        />
+                      </label>
+                      {fotoFile && (
+                        <button
+                          type="button"
+                          onClick={handleRemoverFoto}
+                          className="text-xs font-semibold text-red-600 hover:text-red-700 px-3 py-2 border border-red-200 hover:bg-red-50 rounded-xl transition"
+                        >
+                          Remover
+                        </button>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground">Formatos aceitos: JPG, JPEG, PNG ou WEBP. Máx. 5MB.</span>
+                  </div>
+                </div>
+                {fotoError && (
+                  <p className="text-xs text-red-600 mt-1">{fotoError}</p>
+                )}
               </div>
               <Textarea
                 label="Conte um pouco sobre você"

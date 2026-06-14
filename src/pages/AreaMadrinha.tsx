@@ -107,12 +107,14 @@ type UsuarioCadastro = {
   urlLinkedin?: string | null;
   urlInstagram?: string | null;
   urlFacebook?: string | null;
+  fotoPerfilUrl?: string | null;
 };
 
 type UsuarioCadastroSource = Partial<UsuarioCadastro> & {
   linkedin?: string | null;
   instagram?: string | null;
   facebook?: string | null;
+  FotoPerfilUrl?: string | null;
 };
 
 type Ganho = {
@@ -231,6 +233,7 @@ function normalizarUsuarioCadastro(
     urlLinkedin: usuario.urlLinkedin ?? usuario.linkedin ?? null,
     urlInstagram: usuario.urlInstagram ?? usuario.instagram ?? null,
     urlFacebook: usuario.urlFacebook ?? usuario.facebook ?? null,
+    fotoPerfilUrl: usuario.fotoPerfilUrl ?? usuario.FotoPerfilUrl ?? null,
   };
 }
 
@@ -474,10 +477,96 @@ function Cadastro({
   const [novo, setNovo] = useState("");
   const [bio, setBio] = useState<string>(user?.bio ?? "");
 
+  const auth = useAuth();
+  const [fotoLoading, setFotoLoading] = useState(false);
+  const [fotoError, setFotoError] = useState("");
+
+  const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFotoError("");
+    const file = e.target.files?.[0];
+    if (!file || !auth.token || !auth.user) return;
+
+    const allowedMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!allowedMimeTypes.includes(file.type.toLowerCase()) && !file.name.toLowerCase().endsWith(".webp") && !file.name.toLowerCase().endsWith(".jpg") && !file.name.toLowerCase().endsWith(".jpeg") && !file.name.toLowerCase().endsWith(".png")) {
+      setFotoError("Formato de imagem inválido. Use JPG, JPEG, PNG ou WEBP.");
+      return;
+    }
+
+    const maxSizeBytes = 5 * 1024 * 1024; // 5 MB
+    if (file.size > maxSizeBytes) {
+      setFotoError("O arquivo excede o tamanho máximo permitido (5 MB).");
+      return;
+    }
+
+    setFotoLoading(true);
+    try {
+      const uploadReq = await api.post<{ url: string; nomeArquivo: string }>("documentos/solicitar-upload", {
+        tipoDocumento: "FotoPerfil",
+        tipoMime: file.type || "image/jpeg",
+        tamanhoEmBytes: file.size,
+      });
+
+      const uploadRes = await fetch(uploadReq.data.url, {
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type || "image/jpeg",
+          "x-ms-blob-type": "BlockBlob",
+        },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error("Falha ao enviar arquivo para o armazenamento.");
+      }
+
+      const response = await api.put<{ fotoPerfilUrl: string | null }>("Usuaria", {
+        fotoPerfilUrl: uploadReq.data.nomeArquivo
+      }, {
+        headers: {
+          Authorization: `Bearer ${auth.token}`
+        }
+      });
+
+      if (auth.user) {
+        auth.updateUser({
+          ...auth.user,
+          fotoPerfilUrl: response.data.fotoPerfilUrl
+        });
+      }
+    } catch (err) {
+      setFotoError(await readErrorMessage(err));
+    } finally {
+      setFotoLoading(false);
+    }
+  };
+
+  const handleFotoRemove = async () => {
+    if (!auth.token || !auth.user || fotoLoading) return;
+    setFotoError("");
+    setFotoLoading(true);
+    try {
+      await api.put("Usuaria", {
+        fotoPerfilUrl: null
+      }, {
+        headers: {
+          Authorization: `Bearer ${auth.token}`
+        }
+      });
+
+      auth.updateUser({
+        ...auth.user,
+        fotoPerfilUrl: null
+      });
+    } catch (err) {
+      setFotoError(await readErrorMessage(err));
+    } finally {
+      setFotoLoading(false);
+    }
+  };
+
   useEffect(() => {
     setBio(user?.bio ?? "");
   }, [user?.bio]);
-
 
   const redesSociais = [user?.urlInstagram, user?.urlFacebook, user?.urlLinkedin].filter(Boolean).length;
 
@@ -488,6 +577,44 @@ function Cadastro({
           <p className="text-sm text-muted-foreground mb-4">Carregando profile da madrinha...</p>
         )}
         {profileError && <p className="text-sm text-red-600 mb-4">{profileError}</p>}
+        
+        <div className="flex flex-col sm:flex-row items-center gap-5 border-b pb-6 mb-6">
+          <div className="w-20 h-20 rounded-full bg-[var(--sand)]/60 overflow-hidden flex items-center justify-center text-[var(--moss)] font-semibold text-2xl border shrink-0">
+            {user?.fotoPerfilUrl ? (
+              <img src={user.fotoPerfilUrl} alt={user.nome} className="w-full h-full object-cover" />
+            ) : (
+              <span>{user?.nome ? user.nome.split(" ").map((n) => n[0]).slice(0, 2).join("") : "M"}</span>
+            )}
+          </div>
+          <div className="flex flex-col items-center sm:items-start gap-1">
+            <span className="text-sm font-medium">Foto de Perfil</span>
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-1.5">
+              <label className="cursor-pointer bg-[var(--moss)] text-white hover:bg-[var(--moss)]/90 px-4 py-2 rounded-xl text-xs font-semibold shadow-sm inline-block transition disabled:opacity-60">
+                {fotoLoading ? "Enviando..." : "Alterar foto"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFotoUpload}
+                  disabled={fotoLoading}
+                  className="hidden"
+                />
+              </label>
+              {user?.fotoPerfilUrl && (
+                <button
+                  type="button"
+                  onClick={handleFotoRemove}
+                  disabled={fotoLoading}
+                  className="text-xs font-semibold text-red-600 hover:text-red-700 px-3 py-2 border border-red-200 hover:bg-red-50 rounded-xl transition disabled:opacity-60"
+                >
+                  Remover foto
+                </button>
+              )}
+            </div>
+            {fotoError && <span className="text-xs text-red-600 mt-1">{fotoError}</span>}
+            <span className="text-xs text-muted-foreground mt-1">Formatos aceitos: JPG, JPEG, PNG ou WEBP. Máx. 5MB.</span>
+          </div>
+        </div>
+
         <div className="grid sm:grid-cols-2 gap-4 text-sm">
           <Linha k="Nome" v={user?.nome ?? "—"} />
           <Linha k="E-mail" v={user?.email ?? "—"} />

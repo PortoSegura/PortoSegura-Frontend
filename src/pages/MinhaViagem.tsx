@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Calendar, CheckCircle2, MapPin, Search, MessageCircle } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useNavigate } from "@tanstack/react-router";
 import { SiteShell } from "@/components/SiteShell";
 import { useRequireAuth } from "@/context/auth-context";
@@ -29,6 +29,7 @@ type SolicitacaoApi = {
     verificadoIdentidade: boolean;
     verificadoResidencia: boolean;
     trilhaCursoCompleto: boolean;
+    fotoPerfilUrl?: string | null;
   };
   avaliacao?: {
     id: number;
@@ -150,6 +151,92 @@ export function MinhaViagem() {
   const [enviandoAvaliacao, setEnviandoAvaliacao] = useState(false);
   const [erroAvaliacao, setErroAvaliacao] = useState("");
   const [confirmarConclusaoAberto, setConfirmarConclusaoAberto] = useState(false);
+
+  const [fotoLoading, setFotoLoading] = useState(false);
+  const [fotoError, setFotoError] = useState("");
+
+  const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFotoError("");
+    const file = e.target.files?.[0];
+    if (!file || !auth.token || !auth.user) return;
+
+    const allowedMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!allowedMimeTypes.includes(file.type.toLowerCase()) && !file.name.toLowerCase().endsWith(".webp") && !file.name.toLowerCase().endsWith(".jpg") && !file.name.toLowerCase().endsWith(".jpeg") && !file.name.toLowerCase().endsWith(".png")) {
+      setFotoError("Formato de imagem inválido. Use JPG, JPEG, PNG ou WEBP.");
+      return;
+    }
+
+    const maxSizeBytes = 5 * 1024 * 1024; // 5 MB
+    if (file.size > maxSizeBytes) {
+      setFotoError("O arquivo excede o tamanho máximo permitido (5 MB).");
+      return;
+    }
+
+    setFotoLoading(true);
+    try {
+      const uploadReq = await api.post<{ url: string; nomeArquivo: string }>("documentos/solicitar-upload", {
+        tipoDocumento: "FotoPerfil",
+        tipoMime: file.type || "image/jpeg",
+        tamanhoEmBytes: file.size,
+      });
+
+      const uploadRes = await fetch(uploadReq.data.url, {
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type || "image/jpeg",
+          "x-ms-blob-type": "BlockBlob",
+        },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error("Falha ao enviar arquivo para o armazenamento.");
+      }
+
+      const response = await api.put<{ fotoPerfilUrl: string | null }>("Usuaria", {
+        fotoPerfilUrl: uploadReq.data.nomeArquivo
+      }, {
+        headers: {
+          Authorization: `Bearer ${auth.token}`
+        }
+      });
+
+      if (auth.user) {
+        auth.updateUser({
+          ...auth.user,
+          fotoPerfilUrl: response.data.fotoPerfilUrl
+        });
+      }
+    } catch (err) {
+      setFotoError(await readErrorMessage(err));
+    } finally {
+      setFotoLoading(false);
+    }
+  };
+
+  const handleFotoRemove = async () => {
+    if (!auth.token || !auth.user || fotoLoading) return;
+    setFotoError("");
+    setFotoLoading(true);
+    try {
+      await api.put("Usuaria", {
+        fotoPerfilUrl: null
+      }, {
+        headers: {
+          Authorization: `Bearer ${auth.token}`
+        }
+      });
+
+      auth.updateUser({
+        ...auth.user,
+        fotoPerfilUrl: null
+      });
+    } catch (err) {
+      setFotoError(await readErrorMessage(err));
+    } finally {
+      setFotoLoading(false);
+    }
+  };
 
   const carregarSolicitacoes = useCallback(async () => {
     if (!auth.ready || !auth.token) {
@@ -433,6 +520,9 @@ export function MinhaViagem() {
               <div className="bg-card border rounded-3xl p-6 mt-6">
                 <div className="flex items-center gap-3 mb-4">
                   <Avatar className="w-14 h-14">
+                    {solicitacaoAtual.madrinha.fotoPerfilUrl && (
+                      <AvatarImage src={solicitacaoAtual.madrinha.fotoPerfilUrl} alt={solicitacaoAtual.madrinha.nome} className="object-cover" />
+                    )}
                     <AvatarFallback>{solicitacaoAtual.madrinha.nome.split(" ").map((n) => n[0]).slice(0, 2).join("")}</AvatarFallback>
                   </Avatar>
                   <div>
@@ -576,6 +666,47 @@ export function MinhaViagem() {
             </div>
           </div>
         )}
+
+        <div className="bg-card border rounded-3xl p-7">
+          <h2 className="text-xl mb-4 font-medium flex items-center gap-2">Configurações de perfil</h2>
+          <div className="flex flex-col sm:flex-row items-center gap-5">
+            <div className="w-20 h-20 rounded-full bg-[var(--sand)]/60 overflow-hidden flex items-center justify-center text-[var(--moss)] font-semibold text-2xl border shrink-0">
+              {auth.user?.fotoPerfilUrl ? (
+                <img src={auth.user.fotoPerfilUrl} alt={auth.user.nome} className="w-full h-full object-cover" />
+              ) : (
+                <span>{auth.user?.nome ? auth.user.nome.split(" ").map((n) => n[0]).slice(0, 2).join("") : "U"}</span>
+              )}
+            </div>
+            <div className="flex flex-col items-center sm:items-start gap-1">
+              <span className="text-sm font-semibold">{auth.user?.nome}</span>
+              <span className="text-xs text-muted-foreground">{auth.user?.email}</span>
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
+                <label className="cursor-pointer bg-[var(--moss)] text-white hover:bg-[var(--moss)]/90 px-4 py-2 rounded-xl text-xs font-semibold shadow-sm inline-block transition disabled:opacity-60">
+                  {fotoLoading ? "Enviando..." : "Alterar foto"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFotoUpload}
+                    disabled={fotoLoading}
+                    className="hidden"
+                  />
+                </label>
+                {auth.user?.fotoPerfilUrl && (
+                  <button
+                    type="button"
+                    onClick={handleFotoRemove}
+                    disabled={fotoLoading}
+                    className="text-xs font-semibold text-red-600 hover:text-red-700 px-3 py-2 border border-red-200 hover:bg-red-50 rounded-xl transition disabled:opacity-60"
+                  >
+                    Remover foto
+                  </button>
+                )}
+              </div>
+              {fotoError && <span className="text-xs text-red-600 mt-1">{fotoError}</span>}
+              <span className="text-xs text-muted-foreground mt-1 block">Formatos aceitos: JPG, JPEG, PNG ou WEBP. Máx. 5MB.</span>
+            </div>
+          </div>
+        </div>
 
       {confirmarConclusaoAberto && solicitacaoAtiva && (
         <div className="fixed inset-0 z-55 flex items-center justify-center bg-black/55 backdrop-blur-sm p-4">

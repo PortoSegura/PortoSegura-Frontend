@@ -15,6 +15,7 @@ export type AuthUser = {
   urlLinkedin?: string | null;
   urlInstagram?: string | null;
   urlFacebook?: string | null;
+  fotoPerfilUrl?: string | null;
   roles: string[];
 };
 
@@ -25,6 +26,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   login: (token: string, user?: AuthUser | null) => void;
   logout: () => void;
+  updateUser: (user: AuthUser) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -71,6 +73,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem(AUTH_USER_KEY);
         setToken(null);
         setUser(null);
+      },
+      updateUser: (newUser: AuthUser) => {
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(newUser));
+        setUser(newUser);
       },
     }),
     [ready, token, user],

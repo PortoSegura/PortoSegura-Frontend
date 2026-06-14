@@ -63,6 +63,50 @@ export function Candidatura() {
     previewUrl: "",
   });
 
+  const [fotoFile, setFotoFile] = useState<File | null>(null);
+  const [fotoPreviewUrl, setFotoPreviewUrl] = useState<string>("");
+  const [fotoError, setFotoError] = useState<string>("");
+
+  const handleFotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFotoError("");
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!allowedMimeTypes.includes(file.type.toLowerCase()) && !file.name.toLowerCase().endsWith(".webp") && !file.name.toLowerCase().endsWith(".jpg") && !file.name.toLowerCase().endsWith(".jpeg") && !file.name.toLowerCase().endsWith(".png")) {
+      setFotoError("Formato de imagem inválido. Use JPG, JPEG, PNG ou WEBP.");
+      return;
+    }
+
+    const maxSizeBytes = 5 * 1024 * 1024; // 5 MB
+    if (file.size > maxSizeBytes) {
+      setFotoError("O arquivo excede o tamanho máximo permitido (5 MB).");
+      return;
+    }
+
+    setFotoFile(file);
+    if (fotoPreviewUrl) {
+      URL.revokeObjectURL(fotoPreviewUrl);
+    }
+    setFotoPreviewUrl(URL.createObjectURL(file));
+  };
+
+  const handleRemoverFoto = () => {
+    setFotoFile(null);
+    if (fotoPreviewUrl) {
+      URL.revokeObjectURL(fotoPreviewUrl);
+      setFotoPreviewUrl("");
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (fotoPreviewUrl) {
+        URL.revokeObjectURL(fotoPreviewUrl);
+      }
+    };
+  }, [fotoPreviewUrl]);
+
   const navigate = useNavigate();
 
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -332,6 +376,24 @@ export function Candidatura() {
         });
       }
 
+      let publicFotoUrl: string | null = null;
+      if (fotoFile) {
+        const uploadFotoReq = await api.post<SolicitarUploadResponse>(SOLICITAR_UPLOAD_ENDPOINT, {
+          tipoDocumento: "FotoPerfil",
+          tipoMime: fotoFile.type || "image/jpeg",
+          tamanhoEmBytes: fotoFile.size,
+        });
+
+        await axios.put(uploadFotoReq.data.url, fotoFile, {
+          headers: {
+            "Content-Type": fotoFile.type || "image/jpeg",
+            "x-ms-blob-type": "BlockBlob",
+          },
+        });
+
+        publicFotoUrl = uploadFotoReq.data.nomeArquivo;
+      }
+
       await api.post(CADASTRAR_MADRINHA_ENDPOINT, {
         nome: form.nome,
         email: form.email,
@@ -346,6 +408,7 @@ export function Candidatura() {
         linkedin: form.linkedin || undefined,
         instagram: form.instagram || undefined,
         facebook: form.facebook || undefined,
+        fotoPerfilUrl: publicFotoUrl
       });
 
       setEnviado(true);
@@ -449,6 +512,46 @@ export function Candidatura() {
             <div className="grid sm:grid-cols-2 gap-4">
               <Field icon={<Lock size={16}/>} label="Senha" type="password" value={form.senha} onChange={v => set("senha", v)} placeholder="Crie uma senha"/>
               <Field icon={<Lock size={16}/>} label="Confirmar senha" type="password" value={form.confirmarSenha} onChange={v => set("confirmarSenha", v)} placeholder="Repita a senha"/>
+            </div>
+            <div className="space-y-2 border-t pt-4">
+              <span className="text-sm font-medium text-foreground block">Foto de perfil (opcional)</span>
+              <div className="flex items-center gap-4 mt-2">
+                {fotoPreviewUrl ? (
+                  <div className="relative w-16 h-16 rounded-full overflow-hidden border">
+                    <img src={fotoPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center border border-dashed text-muted-foreground text-xs text-center font-medium">
+                    Sem foto
+                  </div>
+                )}
+                <div className="flex flex-col gap-1">
+                  <div className="flex gap-2">
+                    <label className="cursor-pointer bg-white border hover:bg-muted text-foreground px-4 py-2 rounded-xl text-xs font-semibold shadow-sm inline-block">
+                      Selecionar foto
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFotoChange}
+                        className="hidden"
+                      />
+                    </label>
+                    {fotoFile && (
+                      <button
+                        type="button"
+                        onClick={handleRemoverFoto}
+                        className="text-xs font-semibold text-red-600 hover:text-red-700 px-3 py-2 border border-red-200 hover:bg-red-50 rounded-xl transition"
+                      >
+                        Remover
+                      </button>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground">Formatos aceitos: JPG, JPEG, PNG ou WEBP. Máx. 5MB.</span>
+                </div>
+              </div>
+              {fotoError && (
+                <p className="text-xs text-red-600 mt-1">{fotoError}</p>
+              )}
             </div>
             <div className="pt-2">
               <p className="text-sm text-muted-foreground mb-2">Redes sociais (opcionais). Informe apenas perfis públicos.</p>
