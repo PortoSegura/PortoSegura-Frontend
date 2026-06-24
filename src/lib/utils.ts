@@ -79,7 +79,7 @@ export async function readErrorMessage(response: Response | unknown): Promise<st
         const errs = obj.errors as unknown;
         if (typeof errs === "string") return errs;
         if (Array.isArray(errs) && errs.length) return String(errs[0]);
-        if (typeof errs === "object") {
+        if (typeof errs === "object" && errs !== null) {
           const first = Object.values(errs)[0];
           if (Array.isArray(first) && first.length) return String(first[0]);
           if (typeof first === "string") return String(first);

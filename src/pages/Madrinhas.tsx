@@ -1,386 +1,346 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Filter, Heart, MapPin, Search, Sparkles } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { ArrowRight, Check, MapPin, Shield, Sparkles, Star, Users, Calendar, AlertCircle } from "lucide-react";
+import { useNavigate, Link } from "@tanstack/react-router";
 import { api } from "@/lib/api";
 import { useRequireAuth } from "@/context/auth-context";
 import { readErrorMessage } from "@/lib/utils";
 import { SiteShell } from "@/components/SiteShell";
 
-const OBTER_MADRINHAS_ENDPOINT = "madrinha";
-
-type Ordenacao = "nome" | "avaliacao" | "preco" | "acolhimentos";
-
-type MadrinhaSummaryApi = {
-  id: number;
-  precoDiaria: number;
-  fotoPerfilUrl?: string | null;
-  motivacao: string;
-  usuarioId: number;
-  nome: string;
-  cidade: string;
-  estado: string;
-  servicos: string[];
-  qtdSolicitacoes: number;
-  mediaAvaliacao: number;
-};
-
-type MadrinhaCard = MadrinhaSummaryApi & {
-  servicos: string[];
-};
-
-function extrairMadrinhas(payload: unknown): MadrinhaSummaryApi[] {
-  if (Array.isArray(payload)) {
-    return payload as MadrinhaSummaryApi[];
-  }
-
-  if (payload && typeof payload === "object") {
-    const data = payload as { data?: unknown; items?: unknown; madrinhas?: unknown };
-
-    if (Array.isArray(data.data)) {
-      return data.data as MadrinhaSummaryApi[];
-    }
-
-    if (Array.isArray(data.items)) {
-      return data.items as MadrinhaSummaryApi[];
-    }
-
-    if (Array.isArray(data.madrinhas)) {
-      return data.madrinhas as MadrinhaSummaryApi[];
-    }
-  }
-
-  return [];
-}
-
-function formatarQtdSolicitacoes(qtd: number) {
-  if (qtd === 1) return "1 acolhimento concluído";
-  return `${qtd} acolhimentos concluídos`;
-}
-
-function resumirMotivacao(motivacao: string) {
-  const texto = motivacao.trim();
-
-  if (texto.length <= 140) {
-    return texto;
-  }
-
-  return `${texto.slice(0, 137).trimEnd()}...`;
-}
-
-function avatarFallback(nome: string) {
-  return nome
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((parte) => parte[0]?.toUpperCase())
-    .join("");
-}
-
 export function Madrinhas() {
   const auth = useRequireAuth();
   const navigate = useNavigate();
 
-  const [destino, setDestino] = useState("");
-  const [precoMax, setPrecoMax] = useState(400);
-  const [ordem, setOrdem] = useState<Ordenacao>("avaliacao");
-  const [madrinhas, setMadrinhas] = useState<MadrinhaCard[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [destino, setDestino] = useState("Recife");
+  const [dataInicio, setDataInicio] = useState(() => {
+    const today = new Date();
+    return today.toISOString().split("T")[0];
+  });
+  const [dataFim, setDataFim] = useState(() => {
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    return nextWeek.toISOString().split("T")[0];
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [loadingMadrinhas, setLoadingMadrinhas] = useState(false);
   const [error, setError] = useState("");
-  const [ida, setIda] = useState("");
-  const [volta, setVolta] = useState("");
+  const [madrinhasTime, setMadrinhasTime] = useState<any[]>([]);
+  const [successRegistered, setSuccessRegistered] = useState(false);
+
+  const fetchMadrinhasTime = async (cidadeDestino: string) => {
+    setLoadingMadrinhas(true);
+    try {
+      const res = await api.get(`/madrinha?destino=${cidadeDestino}`, {
+        headers: { Authorization: `Bearer ${auth.token}` }
+      });
+      setMadrinhasTime(res.data);
+    } catch (err) {
+      console.error("Erro ao carregar time local:", err);
+    } finally {
+      setLoadingMadrinhas(false);
+    }
+  };
 
   useEffect(() => {
-    let ativo = true;
+    if (auth.token && destino) {
+      const cidade = destino.split(",")[0].trim();
+      void fetchMadrinhasTime(cidade);
+    }
+  }, [auth.token, destino]);
 
-    const carregarMadrinhas = async () => {
-      if (!auth.ready || !auth.token) {
-        if (ativo) {
-          setMadrinhas([]);
-          setLoading(false);
+  const handleCadastrarViagem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.token) return;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      await api.post("solicitacoes/cadastrar-viagem", {
+        destino: destino.trim() || "Recife",
+        dataInicio: dataInicio ? new Date(dataInicio).toISOString() : null,
+        dataFim: dataFim ? new Date(dataFim).toISOString() : null
+      }, {
+        headers: {
+          Authorization: `Bearer ${auth.token}`
         }
-        return;
-      }
+      });
 
-      setLoading(true);
-      setError("");
+      setSuccessRegistered(true);
 
-      try {
-        const response = await api.get<unknown>(OBTER_MADRINHAS_ENDPOINT, {
-          params: {
-            destino: destino.trim() || undefined,
-            precoMaximo: precoMax,
-          },
-          headers: {
-            Authorization: `Bearer ${auth.token}`,
-          },
-        });
-
-        if (!ativo) return;
-
-        setMadrinhas(extrairMadrinhas(response.data).map((item) => ({
-          ...item,
-          servicos: Array.isArray(item.servicos) ? item.servicos : [],
-        })));
-      } catch (err) {
-        if (!ativo) return;
-
-        setMadrinhas([]);
-        setError(await readErrorMessage(err));
-      } finally {
-        if (ativo) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void carregarMadrinhas();
-
-    return () => {
-      ativo = false;
-    };
-  }, [auth.ready, auth.token, destino, precoMax]);
-
-  const dias = useMemo(() => {
-    if (!ida || !volta) return 0;
-    const ms = new Date(volta).getTime() - new Date(ida).getTime();
-    const diferenca = Math.round(ms / 86400000);
-    return diferenca > 0 ? diferenca : 0;
-  }, [ida, volta]);
-
-  const lista = useMemo(() => {
-    const filtradas = [...madrinhas];
-
-    filtradas.sort((a, b) => {
-      if (ordem === "preco") {
-        return a.precoDiaria - b.precoDiaria;
-      }
-
-      if (ordem === "acolhimentos") {
-        return b.qtdSolicitacoes - a.qtdSolicitacoes;
-      }
-
-      if (ordem === "avaliacao") {
-        return b.mediaAvaliacao - a.mediaAvaliacao;
-      }
-
-      return a.nome.localeCompare(b.nome, "pt-BR");
-    });
-
-    return filtradas;
-  }, [madrinhas, ordem]);
+    } catch (err) {
+      setError(await readErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!auth.ready || !auth.isAuthenticated) {
     return null;
   }
 
+  const isRecife = destino.trim().toLowerCase() === "recife";
+
   return (
     <SiteShell>
-    <div className="max-w-7xl mx-auto px-6 py-10">
-      <div className="mb-8">
-        <h1 className="text-3xl sm:text-4xl mb-2">Encontre sua Madrinha</h1>
-        <p className="text-muted-foreground">
-          {lista.length} mulheres prontas para te acolher pelo Brasil.
-        </p>
-      </div>
+      <div className="max-w-7xl mx-auto px-6 py-10">
+        
+        {/* Header */}
+        <div className="mb-10 text-center max-w-3xl mx-auto">
+          <Badge tone="terracotta">
+            <Sparkles size={14} /> Jornada de Autonomia Assistida
+          </Badge>
+          <h1 className="text-3xl sm:text-5xl font-medium mt-3 mb-4 leading-tight">
+            Cadastre seu Destino
+          </h1>
+          <p className="text-muted-foreground text-base sm:text-lg mb-8 leading-relaxed">
+            Informe para onde você vai e as datas da sua viagem. Você terá acesso aos perfis detalhados e ao suporte da nossa equipe local de especialistas.
+          </p>
 
-      <div className="bg-card border rounded-3xl p-6 sm:p-8 space-y-6 mb-8 shadow-sm">
-        <div className="space-y-2">
-          <label className="block">
-            <span className="text-sm font-semibold text-foreground inline-flex items-center gap-2">
-              <MapPin size={16} className="text-[var(--moss)]" /> Para onde você quer viajar?
-            </span>
-            <div className="relative mt-2">
-              <input
-                value={destino}
-                onChange={(e) => setDestino(e.target.value)}
-                placeholder="Busque cidades ou estados (Ex: Bonito, Salvador, SC...)"
-                className="w-full bg-background border rounded-2xl pl-12 pr-4 py-4 text-base focus:outline-none focus:ring-2 focus:ring-[var(--moss)] shadow-inner transition placeholder:text-muted-foreground/60"
-              />
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
-            </div>
-          </label>
-        </div>
-
-        <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-5 pt-4 border-t border-border/60">
-          <label className="block">
-            <span className="text-xs font-semibold text-muted-foreground block mb-2 uppercase tracking-wider">
-              Data de Ida
-            </span>
-            <input
-              type="date"
-              value={ida}
-              onChange={(e) => {
-                setIda(e.target.value);
-                if (volta && e.target.value && volta <= e.target.value) {
-                  setVolta("");
-                }
-              }}
-              min={new Date().toLocaleDateString("en-CA")}
-              className="w-full bg-background border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--moss)]"
-            />
-          </label>
-
-          <label className="block">
-            <span className="text-xs font-semibold text-muted-foreground block mb-2 uppercase tracking-wider">
-              Data de Volta
-            </span>
-            <input
-              type="date"
-              value={volta}
-              onChange={(e) => setVolta(e.target.value)}
-              min={ida || new Date().toLocaleDateString("en-CA")}
-              className="w-full bg-background border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--moss)]"
-            />
-          </label>
-
-          <label className="block">
-            <div className="flex justify-between text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
-              <span>Preço da diária</span>
-              <span className="text-[var(--moss)] font-bold">R$ {precoMax}</span>
-            </div>
-            <input
-              type="range"
-              min={10}
-              max={500}
-              step={5}
-              value={precoMax}
-              onChange={(e) => setPrecoMax(Number(e.target.value))}
-              className="w-full mt-2 accent-[var(--moss)]"
-            />
-          </label>
-
-          <label className="block">
-            <span className="text-xs font-semibold text-muted-foreground block mb-2 uppercase tracking-wider">
-              Ordenar por
-            </span>
-            <select
-              value={ordem}
-              onChange={(e) => setOrdem(e.target.value as Ordenacao)}
-              className="w-full bg-background border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--moss)] h-[42px]"
-            >
-              <option value="avaliacao">Melhor avaliação</option>
-              <option value="nome">Nome</option>
-              <option value="preco">Menor preço</option>
-              <option value="acolhimentos">Mais acolhimentos</option>
-            </select>
-          </label>
-        </div>
-      </div>
-
-      {loading && <p className="text-sm text-muted-foreground">Carregando madrinhas...</p>}
-      {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
-
-      {!loading && !error && lista.length === 0 && (
-        <div className="rounded-3xl border bg-card p-8 text-center text-muted-foreground">
-          Nenhuma madrinha encontrada para os filtros atuais.
-        </div>
-      )}
-
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 cursor-pointer">
-        {lista.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            onClick={() => navigate({ 
-              to: "/madrinha/$id", 
-              params: { id: String(m.id) },
-              search: { 
-                ida: ida || undefined, 
-                volta: volta || undefined 
-              }
-            })}
-            className="text-left bg-card border rounded-3xl p-6 hover:shadow-lg hover:-translate-y-0.5 transition group relative"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-16 h-16 rounded-2xl bg-[var(--sand)]/60 overflow-hidden flex items-center justify-center text-[var(--moss)] font-semibold text-lg shrink-0">
-                {m.fotoPerfilUrl ? (
-                  <img src={m.fotoPerfilUrl} alt={m.nome} className="w-full h-full object-cover" />
-                ) : (
-                  <span>{avatarFallback(m.nome)}</span>
-                )}
-              </div>
+          <form onSubmit={handleCadastrarViagem} className="bg-card border rounded-3xl p-6 shadow-md max-w-2xl mx-auto space-y-4">
+            <div className="grid sm:grid-cols-3 gap-4 text-left">
               <div>
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-lg leading-tight">{m.nome}</h3>
-                  {m.mediaAvaliacao > 0 && (
-                    <span className="inline-flex items-center gap-0.5 text-xs text-[var(--gold)] font-medium bg-[var(--gold)]/10 px-1.5 py-0.5 rounded-md">
-                      ★ {m.mediaAvaliacao.toFixed(1)}
-                    </span>
-                  )}
+                <label className="block text-[10px] text-muted-foreground font-semibold uppercase mb-1">Destino</label>
+                <div className="relative">
+                  <select
+                    value={destino}
+                    onChange={(e) => setDestino(e.target.value)}
+                    className="w-full bg-secondary/50 border border-transparent rounded-xl pl-9 pr-3 py-3 text-xs focus:outline-none focus:border-[var(--moss)] transition appearance-none cursor-pointer font-medium"
+                  >
+                    <option value="Recife">Recife, PE</option>
+                  </select>
+                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/80" size={14} />
                 </div>
-                <p className="text-sm text-[var(--moss)] inline-flex items-center gap-1 font-medium mt-0.5">
-                  <MapPin size={13} /> {m.cidade}, {m.estado}
+              </div>
+
+              <div>
+                <label className="block text-[10px] text-muted-foreground font-semibold uppercase mb-1">Data de Ida</label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    required
+                    value={dataInicio}
+                    onChange={(e) => setDataInicio(e.target.value)}
+                    className="w-full bg-secondary/50 border border-transparent rounded-xl pl-9 pr-3 py-2.5 text-xs focus:outline-none focus:border-[var(--moss)] transition font-medium"
+                  />
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/80" size={14} />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] text-muted-foreground font-semibold uppercase mb-1">Data de Volta</label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    required
+                    value={dataFim}
+                    onChange={(e) => setDataFim(e.target.value)}
+                    className="w-full bg-secondary/50 border border-transparent rounded-xl pl-9 pr-3 py-2.5 text-xs focus:outline-none focus:border-[var(--moss)] transition font-medium"
+                  />
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/80" size={14} />
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !isRecife}
+              className="w-full bg-[var(--moss)] text-white hover:opacity-90 py-3.5 rounded-xl font-medium transition cursor-pointer text-sm shadow-xs flex items-center justify-center gap-2"
+            >
+              {loading ? "Cadastrando..." : "Confirmar e Cadastrar Viagem (Gratuito)"} <ArrowRight size={16} />
+            </button>
+          </form>
+        </div>
+
+        {error && (
+          <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-900 text-sm max-w-xl mx-auto flex items-start gap-2">
+            <AlertCircle className="shrink-0 text-red-600 mt-0.5" size={16} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {isRecife ? (
+          <div className="space-y-8 max-w-5xl mx-auto">
+            
+            {/* Madrinha Team Curadoria */}
+            <div className="text-center space-y-2">
+              <h2 className="text-2xl font-serif font-semibold">Equipe Regional: Recife, PE</h2>
+              <p className="text-sm text-muted-foreground max-w-xl mx-auto">
+                Conheça as Madrinhas qualificadas ativas na região de Recife prontas para lhe prestar assistência.
+              </p>
+            </div>
+
+            {loadingMadrinhas ? (
+              <div className="flex items-center justify-center py-10 gap-2 text-sm text-muted-foreground">
+                <RefreshCw className="animate-spin" size={18} /> Carregando equipe local...
+              </div>
+            ) : madrinhasTime.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic text-center py-6">Nenhuma Madrinha cadastrada para esta região.</p>
+            ) : (
+              <div className="grid md:grid-cols-3 gap-6">
+                {madrinhasTime.map((m) => (
+                  <Link
+                    key={m.id}
+                    to="/madrinha/$id"
+                    params={{
+                      id: m.id.toString()
+                    }}
+                    search={{
+                      ida: dataInicio,
+                      volta: dataFim
+                    }}
+                    className="bg-card border rounded-[2rem] p-6 shadow-sm hover:shadow-md transition flex flex-col justify-between space-y-4 cursor-pointer text-left group"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div
+                        className="w-16 h-16 rounded-full border-2 border-[var(--moss)] bg-cover bg-center shrink-0 group-hover:scale-105 transition"
+                        style={{ backgroundImage: `url(${m.fotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'})` }}
+                      />
+                      <div className="space-y-1">
+                        <h4 className="font-semibold text-sm text-foreground group-hover:text-[var(--moss)] transition">{m.nome}</h4>
+                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <Star className="fill-amber-400 text-amber-400" size={11} />
+                          <span>{m.mediaAvaliacao.toFixed(1)}</span>
+                          <span>•</span>
+                          <span>{m.qtdSolicitacoes} atendimentos</span>
+                        </div>
+                        <span className="inline-flex bg-[var(--moss)]/10 text-[var(--moss)] text-[9px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          Recife, PE
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">
+                      {m.bio || "Especialista experiente pronta para prestar acompanhamento, suporte de voz e dicas personalizadas na região de Recife."}
+                    </p>
+
+                    <div className="border-t pt-3 flex flex-wrap gap-1.5">
+                      {m.servicos && m.servicos.map((s: string) => (
+                        <span key={s} className="bg-secondary px-2.5 py-0.5 rounded-full text-[9px] font-medium text-foreground">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {/* Certificacoes de Confiança */}
+            <div className="bg-gradient-to-br from-[var(--sand)]/40 to-transparent border rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6">
+              <div className="space-y-2 text-center sm:text-left">
+                <h3 className="font-serif font-semibold text-lg flex items-center justify-center sm:justify-start gap-2">
+                  <Shield size={18} className="text-[var(--moss)]" /> Nossa Garantia de Segurança
+                </h3>
+                <p className="text-xs text-muted-foreground max-w-xl">
+                  Todas as especialistas passam por checagem documental rigorosa e Liveness Check (Biometria Facial). Monitoramos SLAs e as conexões do time local em tempo real.
                 </p>
               </div>
+              <div className="flex gap-4 text-xs font-semibold text-foreground/80 shrink-0">
+                <span className="inline-flex items-center gap-1.5 bg-white border px-3 py-1.5 rounded-full shadow-xs">
+                  ✓ Liveness Check
+                </span>
+                <span className="inline-flex items-center gap-1.5 bg-white border px-3 py-1.5 rounded-full shadow-xs">
+                  ✓ SLA de 15m
+                </span>
+              </div>
             </div>
 
-            <p className="text-sm text-foreground/80 italic mb-3 line-clamp-3">
-              "{resumirMotivacao(m.motivacao)}"
+          </div>
+        ) : (
+          <div className="text-center py-16 bg-muted/30 border border-dashed rounded-3xl max-w-xl mx-auto">
+            <MapPin className="mx-auto text-muted-foreground mb-4" size={40} />
+            <h3 className="text-lg font-semibold mb-2">Destino em planejamento</h3>
+            <p className="text-muted-foreground text-sm max-w-md mx-auto">
+              No momento, nosso MVP e curadoria de Times Locais estão ativos em <strong>Recife</strong>. Selecione "Recife, PE" no dropdown acima para prosseguir!
             </p>
+          </div>
+        )}
 
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {m.servicos.slice(0, 2).map((servico) => (
-                <span
-                  key={servico}
-                  className="text-[11px] rounded-full bg-[var(--sand)]/60 px-2 py-0.5 border border-[var(--sand)]"
-                >
-                  + {servico}
-                </span>
-              ))}
-              {m.servicos.length > 2 && (
-                <span className="text-[11px] text-muted-foreground">
-                  +{m.servicos.length - 2} mimos
-                </span>
-              )}
+      </div>
+
+      {/* Confirmation Modal */}
+      {successRegistered && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card border rounded-[2.5rem] max-w-md w-full p-8 shadow-2xl space-y-6 text-center animate-in fade-in-50 zoom-in-95 duration-200">
+            <div className="w-16 h-16 rounded-full bg-[var(--moss)]/10 text-[var(--moss)] flex items-center justify-center mx-auto">
+              <Shield size={32} className="stroke-[1.5]" />
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t">
+            <div className="space-y-2">
+              <h3 className="text-2xl font-serif">Viagem Cadastrada!</h3>
+              <p className="text-muted-foreground text-sm">
+                Sua viagem foi registrada no sistema. Agora você tem acesso completo ao painel da viagem.
+              </p>
+            </div>
+
+            <div className="bg-secondary/40 border p-5 rounded-3xl space-y-3">
+              <div className="flex -space-x-2 items-center justify-center">
+                <div className="w-12 h-12 rounded-full border-2 border-white bg-cover bg-center" style={{ backgroundImage: "url('https://randomuser.me/api/portraits/women/44.jpg')" }} />
+                <div className="w-12 h-12 rounded-full border-2 border-white bg-cover bg-center" style={{ backgroundImage: "url('https://randomuser.me/api/portraits/women/68.jpg')" }} />
+              </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <Sparkles size={14} className="text-[var(--terracotta)]" />
-                  <span className="text-sm font-semibold">{formatarQtdSolicitacoes(m.qtdSolicitacoes)}</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5">Acolhimentos na plataforma</p>
-              </div>
-              <div className="text-right space-y-0.5">
-                {dias > 0 ? (
-                  <>
-                    <p className="text-xs text-muted-foreground font-medium">Custo total ({dias} {dias === 1 ? "diária" : "diárias"})</p>
-                    <p className="font-serif text-2xl text-[var(--terracotta)] font-bold">
-                      R$ {m.precoDiaria * dias}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      R$ {m.precoDiaria} / diária
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="font-serif text-xl text-[var(--terracotta)]">R$ {m.precoDiaria}</p>
-                    <p className="text-xs text-muted-foreground">por diária</p>
-                  </>
-                )}
+                <p className="text-xs uppercase tracking-wider text-[var(--moss)] font-semibold">Time Recife Ativo</p>
+                <p className="text-xs text-muted-foreground">Especialistas qualificadas prontas para lhe atender sob demanda.</p>
               </div>
             </div>
-          </button>
-        ))}
-      </div>
 
-      <div className="mt-14 bg-[var(--moss)] text-white rounded-3xl p-10 sm:p-14 text-center">
-        <Heart size={32} className="mx-auto fill-white mb-3" />
-        <h2 className="text-3xl sm:text-4xl mb-3">Quer acolher também?</h2>
-        <p className="text-white/80 max-w-xl mx-auto mb-7">
-          Seu perfil entra na plataforma quando estiver pronta para acolher mulheres viajando com mais segurança.
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <button
-            onClick={() => navigate({ to: "/jornada-madrinha" })}
-            className="inline-flex items-center gap-2 rounded-full bg-white text-[var(--moss)] px-7 py-4 font-medium hover:bg-white/90"
-          >
-            Ver jornada da madrinha <ArrowRight size={18} />
-          </button>
+            <div className="text-xs text-muted-foreground">
+              Você poderá adquirir créditos na sua carteira e contratar serviços (como dicas ou ligações) a qualquer momento durante a sua viagem.
+            </div>
+
+            <button
+              onClick={() => navigate({ to: "/minha-viagem" })}
+              className="w-full bg-[var(--moss)] text-white py-4 rounded-2xl font-medium hover:opacity-90 transition cursor-pointer text-sm shadow-xs"
+            >
+              Acessar Painel de Viagem
+            </button>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
     </SiteShell>
+  );
+}
+
+function Badge({
+  children,
+  tone = "moss",
+}: {
+  children: React.ReactNode;
+  tone?: "moss" | "terracotta" | "sand";
+}) {
+  const styles = {
+    moss: "bg-[var(--moss)]/10 text-[var(--moss)] border-[var(--moss)]/20",
+    terracotta: "bg-[var(--terracotta)]/10 text-[var(--terracotta)] border-[var(--terracotta)]/20",
+    sand: "bg-[var(--sand)] text-foreground border-transparent",
+  }[tone];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${styles}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function RefreshCw({ className, size }: { className?: string; size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size || 16}
+      height={size || 16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+      <path d="M16 3h5v5" />
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+      <path d="M8 21H3v-5" />
+    </svg>
   );
 }

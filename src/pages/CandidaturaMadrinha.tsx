@@ -576,7 +576,7 @@ export function Candidatura() {
               <Field label="Estado (UF)" value={form.estado} onChange={v => set("estado", v.toUpperCase().slice(0, 2))} placeholder="BA"/>
             </div>
             <Field icon={<Calendar size={16}/>} label="Há quantos anos você mora aí?" value={form.anosNoLocal} onChange={v => set("anosNoLocal", v)} placeholder="15" type="number"/>
-            <div>
+            {/* <div>
               <label className="block text-sm font-medium mb-1">Quanto você quer cobrar por diária? (R$)</label>
               <div className="flex items-center gap-3">
                 <input type="range" min={40} max={150} step={5} value={form.precoDiaria}
@@ -584,7 +584,7 @@ export function Candidatura() {
                 <span className="font-serif text-2xl text-[var(--terracotta)] w-20 text-right">R$ {form.precoDiaria}</span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">Você pode mudar depois. Comissão da plataforma: 15%.</p>
-            </div>
+            </div> */}
             <NavBtns prev={() => setPasso(1)} next={() => setPasso(3)} canNext={!!form.cidade && !!form.estado && !!form.anosNoLocal && !!form.precoDiaria}/>
           </div>
         )}

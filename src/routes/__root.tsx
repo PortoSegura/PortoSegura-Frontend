@@ -1,6 +1,7 @@
 import { Outlet, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { NotFoundComponent } from "@/components/NotFoundComponent";
 import { AuthProvider } from "@/context/auth-context";
+import { Toaster } from "@/components/ui/sonner";
 
 import appCss from "../styles.css?url";
 
@@ -55,6 +56,7 @@ function RootComponent() {
   return (
     <AuthProvider>
       <Outlet />
+      <Toaster />
     </AuthProvider>
   );
 }

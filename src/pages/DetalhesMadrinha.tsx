@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { useRequireAuth } from "@/context/auth-context";
 import { readErrorMessage } from "@/lib/utils";
 import { SiteShell } from "@/components/SiteShell";
+import { useRouter } from "@tanstack/react-router";
 
 const OBTER_MADRINHA_POR_ID_ENDPOINT = "madrinha";
 
@@ -26,7 +27,10 @@ type MadrinhaDetalheApi = {
     comentario: string;
     dataCriacao: string;
     nomeUsuaria: string;
+    servicoTipo?: string | null;
   }> | null;
+  mediaPorServico?: Record<string, number> | null;
+  qtdPorServico?: Record<string, number> | null;
 };
 
 function avatarFallback(nome: string) {
@@ -62,6 +66,7 @@ export function DetalhesMadrinha({
   const [madrinha, setMadrinha] = useState<MadrinhaDetalheApi | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const router = useRouter();
   const [mostrandoFluxo, setMostrandoFluxo] = useState(false);
 
   useEffect(() => {
@@ -141,10 +146,10 @@ export function DetalhesMadrinha({
     <SiteShell>
       <div className="max-w-5xl mx-auto px-6 py-10">
         <button
-          onClick={() => navigate({ to: "/busca" })}
+          onClick={() => router.history.back()}
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"
         >
-          <ArrowLeft size={16} /> Voltar para a busca
+          <ArrowLeft size={16} /> Voltar
         </button>
 
         {loading && <p className="text-sm text-muted-foreground">Carregando madrinha...</p>}
@@ -177,7 +182,7 @@ export function DetalhesMadrinha({
                 </div>
               </div>
 
-              <div className="text-right sm:border-l sm:pl-6 space-y-0.5">
+              {/* <div className="text-right sm:border-l sm:pl-6 space-y-0.5">
                 {diasPreSel > 0 ? (
                   <>
                     <p className="text-xs text-muted-foreground">Custo total ({diasPreSel} {diasPreSel === 1 ? "diária" : "diárias"})</p>
@@ -190,7 +195,7 @@ export function DetalhesMadrinha({
                     <p className="text-xs text-muted-foreground">por diária de acompanhamento</p>
                   </>
                 )}
-              </div>
+              </div> */}
             </div>
 
             <div className="grid md:grid-cols-2 gap-10 mt-10">
@@ -198,7 +203,7 @@ export function DetalhesMadrinha({
                 <h2 className="text-xl mb-3">Sobre {madrinha.nome.split(" ")[0]}</h2>
                 <p className="text-foreground/85 leading-relaxed mb-5">{madrinha.motivacao}</p>
 
-                <h3 className="text-base font-semibold mb-2">o que oferece além do suporte:</h3>
+                {/* <h3 className="text-base font-semibold mb-2">o que oferece além do suporte:</h3>
                 <ul className="space-y-1.5">
                   {servicos.map((servico) => (
                     <li key={servico} className="flex items-start gap-2 text-sm">
@@ -208,7 +213,7 @@ export function DetalhesMadrinha({
                       <span>{servico}</span>
                     </li>
                   ))}
-                </ul>
+                </ul> */}
 
                 <div className="mt-6">
                   <h2 className="text-xl mb-3">Motivação</h2>
@@ -216,7 +221,7 @@ export function DetalhesMadrinha({
                 </div>
               </div>
 
-              <div className="rounded-3xl bg-[var(--sand)]/35 p-6 border flex flex-col justify-between">
+              <div className="rounded-3xl bg-[var(--sand)]/35 p-6 border flex flex-col justify-between space-y-6">
                 <div>
                   <h2 className="text-xl mb-1">Resumo das Avaliações</h2>
                   <p className="text-sm text-muted-foreground mb-4">
@@ -224,16 +229,28 @@ export function DetalhesMadrinha({
                       ? `${madrinha.mediaAvaliacao.toFixed(1)} de 5 estrelas` 
                       : "Sem avaliações ainda"}
                   </p>
-                  <div className="space-y-2">
-                    {contagemAvaliacoes.map(({ nota, count, pct }) => (
-                      <div key={nota} className="flex items-center gap-3 text-sm">
-                        <span className="w-8 text-muted-foreground">{nota}★</span>
-                        <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                          <div className="h-full bg-[var(--gold)]" style={{ width: `${pct}%` }} />
+
+                  <div className="space-y-4">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Desempenho por Serviço
+                    </p>
+                    {["Dicas Locais", "Ligação/Suporte", "Busca no Aeroporto", "Acompanhamento Presencial"].map((servico) => {
+                      const media = madrinha.mediaPorServico?.[servico] ?? 0;
+                      const qtd = madrinha.qtdPorServico?.[servico] ?? 0;
+
+                      return (
+                        <div key={servico} className="flex items-center justify-between text-xs border-b pb-2 last:border-b-0 last:pb-0">
+                          <div>
+                            <p className="font-semibold text-foreground">{servico}</p>
+                            <p className="text-[10px] text-muted-foreground">{qtd === 1 ? "1 avaliação" : `${qtd} avaliações`}</p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="font-bold text-[var(--moss)]">{media > 0 ? media.toFixed(1) : "—"}</span>
+                            <span className="text-amber-400">★</span>
+                          </div>
                         </div>
-                        <span className="w-8 text-right text-muted-foreground">{count}</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="pt-4 border-t border-border/40 mt-4 text-center text-sm font-semibold text-muted-foreground">
@@ -252,9 +269,19 @@ export function DetalhesMadrinha({
                       <div className="flex items-center justify-between border-b pb-2">
                         <div>
                           <p className="font-semibold text-sm">{a.nomeUsuaria}</p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {new Date(a.dataCriacao).toLocaleDateString("pt-BR")}
-                          </p>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <p className="text-[10px] text-muted-foreground">
+                              {new Date(a.dataCriacao).toLocaleDateString("pt-BR")}
+                            </p>
+                            {a.servicoTipo && (
+                              <>
+                                <span className="text-[10px] text-muted-foreground">•</span>
+                                <span className="bg-secondary text-foreground text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider font-semibold">
+                                  {a.servicoTipo}
+                                </span>
+                              </>
+                            )}
+                          </div>
                         </div>
                         <div className="text-right">
                           <span className="text-[var(--gold)] text-sm font-medium">
@@ -279,7 +306,7 @@ export function DetalhesMadrinha({
               )}
             </div>
 
-            <div className="mt-10 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between border-t pt-7">
+            {/* <div className="mt-10 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between border-t pt-7">
               <div className="text-sm text-muted-foreground">
                 Pagamento seguro · cancelamento gratuito até 7 dias antes
               </div>
@@ -289,7 +316,7 @@ export function DetalhesMadrinha({
               >
                 Solicitar esta Madrinha <ArrowRight size={18} />
               </button>
-            </div>
+            </div> */}
           </div>
         )}
 

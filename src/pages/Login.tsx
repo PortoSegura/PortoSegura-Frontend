@@ -16,9 +16,14 @@ export function Login() {
 
   useEffect(() => {
     if (auth.ready && auth.isAuthenticated) {
-      navigate({ to: "/minha-viagem" });
+      const isMadrinha = auth.user?.roles?.includes("Madrinha") ?? false;
+      if (isMadrinha) {
+        navigate({ to: "/areamadrinha" });
+      } else {
+        navigate({ to: "/minha-viagem" });
+      }
     }
-  }, [auth.isAuthenticated, auth.ready, navigate]);
+  }, [auth.isAuthenticated, auth.ready, auth.user, navigate]);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -55,7 +60,12 @@ export function Login() {
       }
 
       auth.login(token, usuario);
-      navigate({ to: "/minha-viagem" });
+      const isMadrinha = usuario?.roles?.includes("Madrinha") ?? false;
+      if (isMadrinha) {
+        navigate({ to: "/areamadrinha" });
+      } else {
+        navigate({ to: "/minha-viagem" });
+      }
     } catch (err) {
       setError(await readErrorMessage(err));
     } finally {

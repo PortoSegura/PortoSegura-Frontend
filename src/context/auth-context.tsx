@@ -17,6 +17,7 @@ export type AuthUser = {
   urlFacebook?: string | null;
   fotoPerfilUrl?: string | null;
   roles: string[];
+  saldoCreditos?: number;
 };
 
 type AuthContextValue = {

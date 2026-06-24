@@ -1,820 +1,1178 @@
-/* eslint-disable react-hooks/exhaustive-deps */
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Calendar, CheckCircle2, MapPin, Search, MessageCircle } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { ArrowLeft, ArrowRight, CheckCircle2, MapPin, Search, MessageCircle, Shield, AlertCircle, RefreshCw, Send, Clock, Phone, Navigation, Heart, Calendar, Star, Wallet } from "lucide-react";
+import { useNavigate, Link } from "@tanstack/react-router";
 import { SiteShell } from "@/components/SiteShell";
 import { useRequireAuth } from "@/context/auth-context";
 import { api } from "@/lib/api";
 import { readErrorMessage } from "@/lib/utils";
-import { useCallback } from "react";
+
+// Web Audio API helpers to synthesize telephone tones
+const playDialingTone = () => {
+  if (typeof window === "undefined") return { stop: () => {} };
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    const ctx = new AudioContextClass();
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc1.frequency.value = 350;
+    osc2.frequency.value = 440;
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc1.start();
+    osc2.start();
+
+    return {
+      stop: () => {
+        try {
+          osc1.stop();
+          osc2.stop();
+          ctx.close();
+        } catch {}
+      }
+    };
+  } catch (e) {
+    console.error("AudioContext error:", e);
+    return { stop: () => {} };
+  }
+};
+
+const playConnectTone = () => {
+  if (typeof window === "undefined") return;
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    const ctx = new AudioContextClass();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.25);
+  } catch (e) {
+    console.error("AudioContext error:", e);
+  }
+};
 
 type SolicitacaoApi = {
   id: number;
   usuariaId: number;
-  madrinhaId: number;
+  madrinhaId?: number | null;
   descricao: string;
   destino?: string | null;
   dataInicio: string;
   dataFim: string;
-  qtdDiarias: number;
-  valor: number;
   status: string;
-  dataCriacao: string;
-  madrinha: {
+  madrinha?: {
     id: number;
     nome: string;
     telefone?: string | null;
     precoDiaria: number;
-    verificadoIdentidade: boolean;
-    verificadoResidencia: boolean;
-    trilhaCursoCompleto: boolean;
     fotoPerfilUrl?: string | null;
-  };
-  avaliacao?: {
-    id: number;
-    nota: number;
-    comentario?: string | null;
-    dataCriacao: string;
   } | null;
 };
 
-const MINHAS_SOLICITACOES_ENDPOINT = "/solicitacoes/minhas-solicitacoes";
-const CANCELAR_SOLICITACAO_ENDPOINT = (id: number) => `solicitacoes/${id}/cancelar`;
+type Transacao = {
+  id: number;
+  quantidade: number;
+  tipo: string;
+  descricao: string;
+  precoPago?: number;
+  dataCriacao: string;
+};
 
-function formatarData(data: string) {
-  const valor = new Date(data);
-  if (Number.isNaN(valor.getTime())) return data;
-  return valor.toLocaleDateString("pt-BR");
-}
+type SessaoChat = {
+  id: number;
+  usuariaId: number;
+  madrinhaId?: number | null;
+  servicoTipo: string;
+  status: string;
+  dataInicio: string;
+  tempoLimite?: string | null;
+  slaLimite: string;
+  respondida: boolean;
+  madrinhaNome: string;
+  viajanteNome: string;
+  madrinhaFotoPerfilUrl?: string | null;
+  madrinhaMediaAvaliacao?: number | null;
+  horarioDesembarque?: string | null;
+  aeroporto?: string | null;
+  locaisVisitados?: string | null;
+  quantidadeHoras?: number | null;
+  avaliada?: boolean;
+};
 
-function normalizarData(data: string) {
-  const valor = new Date(data);
-  if (Number.isNaN(valor.getTime())) return null;
-  valor.setHours(0, 0, 0, 0);
-  return valor;
-}
-
-function hojeSemHorario() {
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  return hoje;
-}
-
-function tituloDoStatus(status: string, dataInicio: string, dataFim: string) {
-  const statusNormalizado = status.trim().toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
-  const hoje = hojeSemHorario();
-  const inicio = normalizarData(dataInicio);
-  const fim = normalizarData(dataFim);
-
-  if (statusNormalizado === "aberto" || statusNormalizado === "aberta" || statusNormalizado === "abertar") {
-    return "Aguardando madrinha";
-  }
-
-  if (statusNormalizado === "aceito" || statusNormalizado === "aceita") {
-    if (!inicio || !fim) {
-      return "Confirmado pela madrinha";
-    }
-
-    if (hoje < inicio) {
-      return "Confirmado pela madrinha";
-    }
-
-    if (hoje >= inicio && hoje <= fim) {
-      return "Em andamento";
-    }
-
-    if (hoje > fim) {
-      return "Concluída";
-    }
-
-    return "Confirmado pela madrinha";
-  }
-
-  if (statusNormalizado === "concluida") {
-    return "Concluída";
-  }
-
-  if (statusNormalizado === "avaliada") {
-    return "Avaliada";
-  }
-
-  if (statusNormalizado === "recusada") {
-    return "Recusada";
-  }
-
-  if (statusNormalizado === "cancelada") {
-    return "Cancelada";
-  }
-
-  return status;
-}
-
-function classeDoStatus(status: string) {
-  const valor = status.trim().toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
-
-  if (valor === "aberto" || valor === "aberta" || valor === "abertar") return "bg-amber-100 text-amber-900 border-amber-200";
-  if (valor === "aceito" || valor === "aceita" || valor === "andamento" || valor === "em andamento") return "bg-[var(--moss)]/10 text-[var(--moss)] border-[var(--moss)]/20";
-  if (valor === "concluida" || valor === "avaliada") return "bg-emerald-100 text-emerald-900 border-emerald-200";
-  if (valor === "recusada" || valor === "cancelada") return "bg-red-100 text-red-900 border-red-200";
-
-  return "bg-muted text-muted-foreground border-border";
-}
-
-function formatoStatusChips(status: string) {
-  const valor = status.trim().toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
-  if (valor === "aberto" || valor === "aberta" || valor === "abertar") return 1;
-  if (valor === "aceito" || valor === "aceita") return 2;
-  if (valor === "andamento" || valor === "em andamento") return 3;
-  if (valor === "concluida" || valor === "avaliada") return 4;
-  return 1;
-}
-
-function ehSolicitacaoAtiva(status: string) {
-  const valor = status.trim().toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
-  return valor === "aberto" || valor === "aberta" || valor === "abertar" || valor === "aceito" || valor === "aceita" || valor === "andamento" || valor === "em andamento";
-}
+type Mensagem = {
+  id: number;
+  sessaoChatId: number;
+  remetenteId: number;
+  texto: string;
+  dataCriacao: string;
+};
 
 export function MinhaViagem() {
   const auth = useRequireAuth();
   const navigate = useNavigate();
-  const [solicitacoes, setSolicitacoes] = useState<SolicitacaoApi[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [cancelando, setCancelando] = useState(false);
-  const [concluindo, setConcluindo] = useState(false);
 
-  const [modalAvaliacaoAberto, setModalAvaliacaoAberto] = useState(false);
-  const [solicitacaoParaAvaliar, setSolicitacaoParaAvaliar] = useState<SolicitacaoApi | null>(null);
-  const [nota, setNota] = useState(5);
-  const [comentario, setComentario] = useState("");
-  const [enviandoAvaliacao, setEnviandoAvaliacao] = useState(false);
-  const [erroAvaliacao, setErroAvaliacao] = useState("");
-  const [confirmarConclusaoAberto, setConfirmarConclusaoAberto] = useState(false);
+  useEffect(() => {
+    if (auth.ready && auth.isAuthenticated) {
+      const isMadrinha = auth.user?.roles?.includes("Madrinha") ?? false;
+      if (isMadrinha) {
+        navigate({ to: "/areamadrinha" });
+      }
+    }
+  }, [auth.isAuthenticated, auth.ready, auth.user, navigate]);
 
-  const [fotoLoading, setFotoLoading] = useState(false);
-  const [fotoError, setFotoError] = useState("");
+  // Core Data states
+  const [solicitacao, setSolicitacao] = useState<SolicitacaoApi | null>(null);
+  const [historicoTransacoes, setHistoricoTransacoes] = useState<Transacao[]>([]);
+  const [sessoesChat, setSessoesChat] = useState<SessaoChat[]>([]);
+  const [sessaoSelecionada, setSessaoSelecionada] = useState<SessaoChat | null>(null);
+  const [mensagens, setMensagens] = useState<Mensagem[]>([]);
+  const [madrinhasTime, setMadrinhasTime] = useState<any[]>([]);
 
-  const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFotoError("");
-    const file = e.target.files?.[0];
-    if (!file || !auth.token || !auth.user) return;
+  const sessaoSelecionadaRef = useRef<SessaoChat | null>(null);
+  useEffect(() => {
+    sessaoSelecionadaRef.current = sessaoSelecionada;
+  }, [sessaoSelecionada]);
 
-    const allowedMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-    if (!allowedMimeTypes.includes(file.type.toLowerCase()) && !file.name.toLowerCase().endsWith(".webp") && !file.name.toLowerCase().endsWith(".jpg") && !file.name.toLowerCase().endsWith(".jpeg") && !file.name.toLowerCase().endsWith(".png")) {
-      setFotoError("Formato de imagem inválido. Use JPG, JPEG, PNG ou WEBP.");
+  const updateSessaoSelecionada = useCallback((sessao: SessaoChat | null) => {
+    sessaoSelecionadaRef.current = sessao;
+    setSessaoSelecionada(sessao);
+  }, []);
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const activeDialToneRef = useRef<{ stop: () => void } | null>(null);
+
+  useEffect(() => {
+    if (!sessaoSelecionada || !sessaoSelecionada.servicoTipo.toLowerCase().includes("liga")) {
+      // Cleanup when not in call
+      if (activeDialToneRef.current) {
+        activeDialToneRef.current.stop();
+        activeDialToneRef.current = null;
+      }
       return;
     }
 
-    const maxSizeBytes = 5 * 1024 * 1024; // 5 MB
-    if (file.size > maxSizeBytes) {
-      setFotoError("O arquivo excede o tamanho máximo permitido (5 MB).");
-      return;
-    }
+    const status = sessaoSelecionada.status;
 
-    setFotoLoading(true);
-    try {
-      const uploadReq = await api.post<{ url: string; nomeArquivo: string }>("documentos/solicitar-upload", {
-        tipoDocumento: "FotoPerfil",
-        tipoMime: file.type || "image/jpeg",
-        tamanhoEmBytes: file.size,
-      });
-
-      const uploadRes = await fetch(uploadReq.data.url, {
-        method: "PUT",
-        headers: {
-          "Content-Type": file.type || "image/jpeg",
-          "x-ms-blob-type": "BlockBlob",
-        },
-        body: file,
-      });
-
-      if (!uploadRes.ok) {
-        throw new Error("Falha ao enviar arquivo para o armazenamento.");
+    if (status === "Pendente") {
+      // Play dialing tone
+      if (!activeDialToneRef.current) {
+        activeDialToneRef.current = playDialingTone();
+      }
+    } else if (status === "Ativa") {
+      // Stop dialing tone, play connect tone
+      if (activeDialToneRef.current) {
+        activeDialToneRef.current.stop();
+        activeDialToneRef.current = null;
+        playConnectTone();
       }
 
-      const response = await api.put<{ fotoPerfilUrl: string | null }>("Usuaria", {
-        fotoPerfilUrl: uploadReq.data.nomeArquivo
-      }, {
-        headers: {
-          Authorization: `Bearer ${auth.token}`
-        }
-      });
+      // Start capturing microphone and drawing waveform
+      let animationFrameId: number;
+      let analyser: AnalyserNode;
+      let dataArray: Uint8Array;
 
-      if (auth.user) {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.warn("MediaDevices or getUserMedia is not supported in this context (requires HTTPS or localhost).");
+      } else {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(stream => {
+            streamRef.current = stream;
+            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+            const audioContext = new AudioContextClass();
+            audioContextRef.current = audioContext;
+
+            const source = audioContext.createMediaStreamSource(stream);
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+
+            const bufferLength = analyser.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+
+            const draw = () => {
+              const canvas = canvasRef.current;
+              if (!canvas) {
+                animationFrameId = requestAnimationFrame(draw);
+                return;
+              }
+              const ctx = canvas.getContext("2d");
+              if (!ctx) return;
+
+              const width = canvas.width;
+              const height = canvas.height;
+
+              analyser.getByteFrequencyData(dataArray as any);
+
+              ctx.clearRect(0, 0, width, height);
+              
+              // Draw gradient background
+              ctx.fillStyle = "rgba(16, 185, 129, 0.05)";
+              ctx.fillRect(0, 0, width, height);
+
+              // Draw center baseline
+              ctx.strokeStyle = "rgba(16, 185, 129, 0.15)";
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(0, height / 2);
+              ctx.lineTo(width, height / 2);
+              ctx.stroke();
+
+              // Draw wave
+              ctx.lineWidth = 2.5;
+              ctx.strokeStyle = "#10b981";
+              ctx.beginPath();
+
+              const sliceWidth = width / bufferLength;
+              let x = 0;
+
+              for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = (v * height) / 2;
+
+                if (i === 0) {
+                  ctx.moveTo(x, y);
+                } else {
+                  ctx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+              }
+
+              ctx.lineTo(width, height / 2);
+              ctx.stroke();
+
+              animationFrameId = requestAnimationFrame(draw);
+            };
+
+            draw();
+          })
+          .catch(err => {
+            console.error("Error accessing microphone:", err);
+          });
+      }
+
+      return () => {
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+        }
+        if (audioContextRef.current) {
+          audioContextRef.current.close();
+        }
+      };
+    } else {
+      // Finalizada or other status
+      if (activeDialToneRef.current) {
+        activeDialToneRef.current.stop();
+        activeDialToneRef.current = null;
+      }
+    }
+  }, [sessaoSelecionada?.status, sessaoSelecionada?.id]);
+
+  // Ref cache to prevent flickering
+  const mensagensCacheRef = useRef<Record<number, Mensagem[]>>({});
+
+  const handleSelectSessao = (s: SessaoChat) => {
+    updateSessaoSelecionada(s);
+    const cached = mensagensCacheRef.current[s.id];
+    setMensagens(cached || []);
+  };
+
+  // Evaluation states for finished services
+  const [avaliacaoNota, setAvaliacaoNota] = useState(5);
+  const [avaliacaoComentario, setAvaliacaoComentario] = useState("");
+  const [enviandoAvaliacaoServico, setEnviandoAvaliacaoServico] = useState(false);
+
+  // UI States
+  const [loading, setLoading] = useState(true);
+  const [loadingChat, setLoadingChat] = useState(false);
+  const [error, setError] = useState("");
+  const [textoMensagem, setTextoMensagem] = useState("");
+  const [enviandoMensagem, setEnviandoMensagem] = useState(false);
+  const [iniciandoServico, setIniciandoServico] = useState(false);
+  const [verificandoSla, setVerificandoSla] = useState(false);
+  
+  // Timer state for time-boxing
+  const [tempoRestanteStr, setTempoRestanteStr] = useState<string>("");
+
+  // Input states for specific services
+  const [modalServicoAtivo, setModalServicoAtivo] = useState<string | null>(null);
+  const [horarioDesembarque, setHorarioDesembarque] = useState("");
+  const [aeroporto, setAeroporto] = useState("");
+  const [locaisVisitados, setLocaisVisitados] = useState("");
+  const [quantidadeHoras, setQuantidadeHoras] = useState(4);
+
+  const fetchCoreData = useCallback(async (targetSessaoId?: number) => {
+    if (!auth.token) return;
+    setError("");
+    try {
+      // 1. Fetch active travel match
+      const resSol = await api.get<SolicitacaoApi[]>("/solicitacoes/minhas-solicitacoes", {
+        headers: { Authorization: `Bearer ${auth.token}` }
+      });
+      const activeSol = resSol.data.find(s => s.status === "Aberta" || s.status === "Aceita");
+      setSolicitacao(activeSol || null);
+
+      // Load local team of Madrinhas if there is an active trip destination
+      if (activeSol && activeSol.destino) {
+        const cidade = activeSol.destino.split(",")[0].trim();
+        try {
+          const resMadrinhas = await api.get(`/madrinha?destino=${cidade}`, {
+            headers: { Authorization: `Bearer ${auth.token}` }
+          });
+          setMadrinhasTime(resMadrinhas.data);
+        } catch (err) {
+          console.error("Erro ao obter time local:", err);
+        }
+      } else {
+        setMadrinhasTime([]);
+      }
+
+      // 2. Fetch credit balance
+      const resProfile = await api.get<{ saldoCreditos: number }>("/Usuaria", {
+        headers: { Authorization: `Bearer ${auth.token}` }
+      });
+      if (auth.user && auth.user.saldoCreditos !== resProfile.data.saldoCreditos) {
         auth.updateUser({
           ...auth.user,
-          fotoPerfilUrl: response.data.fotoPerfilUrl
+          saldoCreditos: resProfile.data.saldoCreditos
         });
       }
-    } catch (err) {
-      setFotoError(await readErrorMessage(err));
-    } finally {
-      setFotoLoading(false);
-    }
-  };
 
-  const handleFotoRemove = async () => {
-    if (!auth.token || !auth.user || fotoLoading) return;
-    setFotoError("");
-    setFotoLoading(true);
-    try {
-      await api.put("Usuaria", {
-        fotoPerfilUrl: null
-      }, {
-        headers: {
-          Authorization: `Bearer ${auth.token}`
+      // 3. Fetch transaction history
+      const resHist = await api.get<Transacao[]>("/carteira/historico", {
+        headers: { Authorization: `Bearer ${auth.token}` }
+      });
+      setHistoricoTransacoes(resHist.data);
+
+      // 4. Fetch chat sessions
+      const resChats = await api.get<SessaoChat[]>("/chat/sessoes", {
+        headers: { Authorization: `Bearer ${auth.token}` }
+      });
+      setSessoesChat(resChats.data);
+
+      // Keep selection active if it still exists (no automatic selection on startup)
+      const currentSelected = sessaoSelecionadaRef.current;
+      if (resChats.data.length > 0) {
+        if (targetSessaoId) {
+          const target = resChats.data.find(c => c.id === targetSessaoId);
+          if (target) {
+            updateSessaoSelecionada(target);
+          }
+        } else if (currentSelected) {
+          const updated = resChats.data.find(c => c.id === currentSelected.id);
+          if (updated) {
+            updateSessaoSelecionada(updated);
+          } else {
+            updateSessaoSelecionada(null);
+          }
         }
-      });
-
-      auth.updateUser({
-        ...auth.user,
-        fotoPerfilUrl: null
-      });
+      } else {
+        updateSessaoSelecionada(null);
+      }
     } catch (err) {
-      setFotoError(await readErrorMessage(err));
-    } finally {
-      setFotoLoading(false);
-    }
-  };
-
-  const carregarSolicitacoes = useCallback(async () => {
-    if (!auth.ready || !auth.token) {
-      setSolicitacoes([]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-
-    try {
-      const response = await api.get<SolicitacaoApi[]>(MINHAS_SOLICITACOES_ENDPOINT, {
-        headers: {
-          Authorization: `Bearer ${auth.token}`,
-        },
-      });
-
-      setSolicitacoes(Array.isArray(response.data) ? response.data : []);
-    } catch (err) {
-      setSolicitacoes([]);
       setError(await readErrorMessage(err));
     } finally {
       setLoading(false);
     }
-  }, [auth.ready, auth.token]);
+  }, [auth.token, updateSessaoSelecionada]);
 
-  useEffect(() => {
-    void carregarSolicitacoes();
-  }, [carregarSolicitacoes]);
-
-  const concluirSolicitacao = async (id: number) => {
-    if (!auth.token || concluindo) return;
-    setConcluindo(true);
+  // Load messages for the selected session
+  const fetchMessages = useCallback(async (isSilent = false) => {
+    if (!auth.token || !sessaoSelecionada) return;
+    const currentId = sessaoSelecionada.id;
+    const hasCache = !!mensagensCacheRef.current[currentId];
+    if (!isSilent && !hasCache) setLoadingChat(true);
     try {
-      await api.post(`/solicitacoes/${id}/concluir`, {}, {
+      const resMsg = await api.get<{
+        sessaoStatus: string;
+        tempoLimite?: string | null;
+        slaLimite: string;
+        respondida: boolean;
+        mensagens: Mensagem[];
+      }>(`/chat/sessoes/${currentId}/mensagens`, {
         headers: { Authorization: `Bearer ${auth.token}` }
       });
       
-      const response = await api.get<SolicitacaoApi[]>(MINHAS_SOLICITACOES_ENDPOINT, {
-        headers: {
-          Authorization: `Bearer ${auth.token}`,
-        },
+      mensagensCacheRef.current[currentId] = resMsg.data.mensagens;
+      setMensagens(resMsg.data.mensagens);
+      
+      // Update selected session status and fields
+      setSessaoSelecionada(prev => {
+        const next = prev && prev.id === currentId ? {
+          ...prev,
+          status: resMsg.data.sessaoStatus,
+          tempoLimite: resMsg.data.tempoLimite,
+          slaLimite: resMsg.data.slaLimite,
+          respondida: resMsg.data.respondida
+        } : prev;
+        sessaoSelecionadaRef.current = next;
+        return next;
       });
 
-      const updatedList = Array.isArray(response.data) ? response.data : [];
-      setSolicitacoes(updatedList);
-
-      const completedSol = updatedList.find(s => s.id === id);
-      if (completedSol) {
-        setSolicitacaoParaAvaliar(completedSol);
-        setModalAvaliacaoAberto(true);
-      }
     } catch (err) {
-      setError(await readErrorMessage(err));
+      console.error("Erro ao obter mensagens", err);
     } finally {
-      setConcluindo(false);
+      if (!isSilent && !hasCache) setLoadingChat(false);
     }
-  };
+  }, [auth.token, sessaoSelecionada?.id]);
 
-  const enviarAvaliacao = async () => {
-    if (!solicitacaoParaAvaliar || !auth.token || enviandoAvaliacao) return;
-    
-    setEnviandoAvaliacao(true);
-    setErroAvaliacao("");
+  useEffect(() => {
+    void fetchCoreData();
+    const pollTimer = setInterval(() => {
+      void fetchCoreData();
+    }, 5000);
+    return () => clearInterval(pollTimer);
+  }, [auth.token, fetchCoreData]);
 
-    try {
-      await api.post("/avaliacao", {
-        solicitacaoId: solicitacaoParaAvaliar.id,
-        madrinhaId: solicitacaoParaAvaliar.madrinhaId,
-        nota,
-        comentario: comentario.trim() || null
-      }, {
-        headers: { Authorization: `Bearer ${auth.token}` }
-      });
+  // Poll messages every 6 seconds to simulate real-time updates (especially for match/SLA updates)
+  useEffect(() => {
+    if (!sessaoSelecionada) return;
+    const timer = setInterval(() => {
+      void fetchMessages(true);
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [sessaoSelecionada?.id, fetchMessages]);
 
-      setModalAvaliacaoAberto(false);
-      setSolicitacaoParaAvaliar(null);
-      setNota(5);
-      setComentario("");
-      await carregarSolicitacoes();
-    } catch (err) {
-      setErroAvaliacao(await readErrorMessage(err));
-    } finally {
-      setEnviandoAvaliacao(false);
+  useEffect(() => {
+    if (sessaoSelecionada) {
+      void fetchMessages(false);
     }
-  };
+  }, [sessaoSelecionada?.id]);
 
-  const solicitacaoAtual = useMemo(() => solicitacoes[0] ?? null, [solicitacoes]);
-  const solicitacoesAtivas = useMemo(() => solicitacoes.filter((solicitacao) => ehSolicitacaoAtiva(solicitacao.status)), [solicitacoes]);
-  const solicitacoesHistorico = useMemo(
-    () => solicitacoes.filter((solicitacao) => !ehSolicitacaoAtiva(solicitacao.status)),
-    [solicitacoes],
-  );
-
-  const solicitacaoAtiva = useMemo(() => solicitacoesAtivas[0] ?? null, [solicitacoesAtivas]);
-
-  const statusExibicao = useMemo(() => {
-    if (!solicitacaoAtiva) return "";
-    return tituloDoStatus(solicitacaoAtiva.status, solicitacaoAtiva.dataInicio, solicitacaoAtiva.dataFim);
-  }, [solicitacaoAtiva]);
-
-  const etapaAtual = useMemo(() => {
-    if (!solicitacaoAtiva) return 0;
-    return formatoStatusChips(solicitacaoAtiva.status);
-  }, [solicitacaoAtiva]);
-
-  const podeConcluirViagem = useMemo(() => {
-    if (!solicitacaoAtiva) return false;
-    const hoje = hojeSemHorario();
-    const fim = normalizarData(solicitacaoAtiva.dataFim);
-    return fim ? hoje >= fim : false;
-  }, [solicitacaoAtiva]);
-
-  const whatsappUrl = useMemo(() => {
-    const telefone = solicitacaoAtiva?.madrinha.telefone?.replace(/\D/g, "") ?? "";
-
-    if (!telefone) {
-      return "";
-    }
-
-    const numero = telefone.startsWith("55") ? telefone : `55${telefone}`;
-    return `https://wa.me/${numero}`;
-  }, [solicitacaoAtual]);
-
-  const podeCancelar = Boolean(solicitacaoAtiva && !["cancelada", "recusada", "concluida"].includes(solicitacaoAtiva.status.trim().toLowerCase()));
-
-  const cancelarSolicitacao = async () => {
-    if (!solicitacaoAtiva || !auth.token || cancelando) {
+  // Timer countdown hook for time-boxing (30 min chat)
+  useEffect(() => {
+    if (!sessaoSelecionada?.tempoLimite) {
+      setTempoRestanteStr("");
       return;
     }
 
-    setCancelando(true);
+    const interval = setInterval(() => {
+      const limit = new Date(sessaoSelecionada.tempoLimite!).getTime();
+      const now = new Date().getTime();
+      const diff = limit - now;
 
+      if (diff <= 0) {
+        setTempoRestanteStr("Tempo expirado");
+        clearInterval(interval);
+        void fetchMessages();
+      } else {
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+        setTempoRestanteStr(`${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")} restante`);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [sessaoSelecionada?.tempoLimite]);
+
+  // Request Service submit
+  const handleIniciarServicoSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.token || !modalServicoAtivo) return;
+
+    setIniciandoServico(true);
+    setError("");
     try {
-      await api.post(
-        CANCELAR_SOLICITACAO_ENDPOINT(solicitacaoAtiva.id),
-        {},
+      const res = await api.post<{ sessaoId: number }>(
+        "/chat/sessoes/iniciar-servico",
         {
-          headers: {
-            Authorization: `Bearer ${auth.token}`,
-          },
+          servicoTipo: modalServicoAtivo,
+          horarioDesembarque: modalServicoAtivo.toLowerCase().includes("busca") ? horarioDesembarque : null,
+          aeroporto: modalServicoAtivo.toLowerCase().includes("busca") ? aeroporto : null,
+          locaisVisitados: modalServicoAtivo.toLowerCase().includes("acompanhamento") ? locaisVisitados : null,
+          quantidadeHoras: modalServicoAtivo.toLowerCase().includes("acompanhamento") ? quantidadeHoras : null
         },
+        { headers: { Authorization: `Bearer ${auth.token}` } }
       );
 
-      await carregarSolicitacoes();
+      const newSessId = res.data.sessaoId;
+
+      // Reset form states
+      setModalServicoAtivo(null);
+      setHorarioDesembarque("");
+      setAeroporto("");
+      setLocaisVisitados("");
+      setQuantidadeHoras(4);
+
+      // Refresh and select the new session
+      await fetchCoreData(newSessId);
     } catch (err) {
       setError(await readErrorMessage(err));
     } finally {
-      setCancelando(false);
+      setIniciandoServico(false);
     }
   };
 
-  const etapas = [
-    { chave: "aberto", label: "Aguardando madrinha" },
-    { chave: "aceito", label: "Confirmada" },
-    { chave: "andamento", label: "Em andamento" },
-    { chave: "concluida", label: "Concluída" },
-  ] as const;
+  // Send Message
+  const handleEnviarMensagem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const currentId = sessaoSelecionada?.id;
+    if (!auth.token || !sessaoSelecionada || !textoMensagem.trim() || enviandoMensagem) return;
+    
+    setEnviandoMensagem(true);
+    try {
+      await api.post("/chat/sessoes/enviar-mensagem", {
+        sessaoId: currentId,
+        texto: textoMensagem.trim()
+      }, {
+        headers: { Authorization: `Bearer ${auth.token}` }
+      });
+      setTextoMensagem("");
+      await fetchMessages();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setEnviandoMensagem(false);
+    }
+  };
+
+  const handleCriarAvaliacao = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.token || !sessaoSelecionada || !sessaoSelecionada.madrinhaId) return;
+
+    setEnviandoAvaliacaoServico(true);
+    try {
+      await api.post("/avaliacao", {
+        sessaoChatId: sessaoSelecionada.id,
+        madrinhaId: sessaoSelecionada.madrinhaId,
+        nota: avaliacaoNota,
+        comentario: avaliacaoComentario.trim()
+      }, {
+        headers: { Authorization: `Bearer ${auth.token}` }
+      });
+      setAvaliacaoNota(5);
+      setAvaliacaoComentario("");
+      await fetchCoreData();
+      await fetchMessages();
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao enviar avaliação.");
+    } finally {
+      setEnviandoAvaliacaoServico(false);
+    }
+  };
+
+  // Simulate SLA Violation & Redistribution (Debug trigger)
+  const handleVerificarSla = async () => {
+    if (verificandoSla) return;
+    setVerificandoSla(true);
+    try {
+      await api.post("/chat/verificar-sla");
+      updateSessaoSelecionada(null);
+      await fetchCoreData();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setVerificandoSla(false);
+    }
+  };
 
   if (!auth.ready || !auth.isAuthenticated) {
     return null;
   }
 
+  // Cost catalog mapping
+  const servicosInfo = [
+    { nome: "Dicas Locais (Chat)", creditos: 1, desc: "Dúvidas rápidas via chat (sessão de 30min)", icon: <Clock size={18} /> },
+    { nome: "Ligação/Suporte", creditos: 3, desc: "Ligação direta emergencial para as Madrinhas do Time local", icon: <Phone size={18} /> },
+    { nome: "Busca no Aeroporto", creditos: 10, desc: "Recepção no desembarque (Informe voo e aeroporto)", icon: <Navigation size={18} /> },
+    { nome: "Acompanhamento Presencial", creditos: 20, desc: "Suporte físico dedicado (5 créditos por hora)", icon: <Heart size={18} /> },
+  ];
+
   return (
     <SiteShell>
-      <div className="max-w-4xl mx-auto px-6 py-10 space-y-8">
+      <div className="max-w-7xl mx-auto px-6 py-10 space-y-8">
+        
+        {/* Header */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground mb-2">Minha viagem</p>
-            <h1 className="text-3xl sm:text-4xl">Acompanhe sua solicitação</h1>
+            <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground mb-2">Concierge & Suporte Nativo</p>
+            <h1 className="text-3xl sm:text-4xl font-serif">Minha Viagem Assistida</h1>
           </div>
           <button
             onClick={() => navigate({ to: "/busca" })}
-            className="inline-flex items-center gap-2 rounded-full border px-5 py-3 text-sm font-medium hover:bg-muted"
+            className="inline-flex items-center gap-2 rounded-full border px-5 py-3 text-sm font-medium hover:bg-muted cursor-pointer transition shadow-sm bg-card"
           >
-            <Search size={16} /> Agendar madrinha
+            <Search size={16} /> Adquirir Créditos / Novo Destino
           </button>
         </div>
 
-        {loading && <p className="text-sm text-muted-foreground">Carregando sua solicitação...</p>}
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && (
+          <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-900 text-sm">
+            {error}
+          </div>
+        )}
 
-        {!loading && !error && !solicitacaoAtiva && (
-          <div className="bg-card border rounded-3xl p-8 text-center space-y-5">
+        {loading ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <RefreshCw className="animate-spin" size={18} /> Carregando sua viagem...
+          </div>
+        ) : !solicitacao ? (
+          /* No active Trip match */
+          <div className="bg-card border rounded-[2rem] p-10 text-center space-y-6 max-w-2xl mx-auto shadow-sm">
             <div className="mx-auto w-16 h-16 rounded-2xl bg-[var(--sand)]/50 flex items-center justify-center text-[var(--moss)]">
-              <MapPin size={28} />
+              <MapPin size={32} />
             </div>
             <div className="space-y-2">
-              <h2 className="text-2xl">Não foi localizada uma solicitação</h2>
-              <p className="text-muted-foreground max-w-xl mx-auto">
-                Você ainda não tem uma viagem agendada. Pesquise uma madrinha e crie sua solicitação para começar o acompanhamento.
+              <h2 className="text-2xl font-serif">Destino e Viagem não localizados</h2>
+              <p className="text-muted-foreground">
+                Você ainda não tem uma viagem ativa. Digite "Recife" e adquira um pacote de créditos para desbloquear o suporte local!
               </p>
             </div>
             <button
               onClick={() => navigate({ to: "/busca" })}
-              className="inline-flex items-center justify-center gap-2 bg-[var(--moss)] text-white rounded-full px-7 py-4 font-medium hover:opacity-90"
+              className="inline-flex items-center justify-center gap-2 bg-[var(--moss)] text-white rounded-full px-7 py-4 font-medium hover:opacity-90 cursor-pointer shadow-sm"
             >
-              Ir para busca de madrinhas <ArrowRight size={18} />
+              Ir para Destinos e Pacotes <ArrowRight size={18} />
             </button>
           </div>
-        )}
-
-        {!loading && !error && solicitacaoAtiva && (
-          <>
-            <div className="bg-[var(--moss)] text-white rounded-3xl p-8 shadow-sm">
-              <p className="text-white/80 text-sm uppercase tracking-[0.18em] mb-2">Sua próxima viagem</p>
-              <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-                <div>
-                  <h2 className="text-3xl sm:text-4xl mb-1">
-                    {solicitacaoAtiva.destino}
-                  </h2>
-                  <p className="text-white/85">Madrinha escolhida: {solicitacaoAtiva.madrinha.nome}</p>
+        ) : (
+          /* Active Trip Hub */
+          <div className="space-y-8">
+            
+            {/* Top Level: Active Destination details (100% width) */}
+            <div className="bg-gradient-to-r from-[var(--moss)] to-[var(--moss)]/85 text-white rounded-[2rem] p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+              <div className="space-y-2">
+                <span className="bg-white/20 text-white px-3 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider">
+                  Destino Ativo & Viagem Cadastrada
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-serif font-bold leading-tight">
+                  {solicitacao.destino || "Recife, PE"}
+                </h2>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/80">
+                  <p className="flex items-center gap-1">
+                    <Calendar size={14} />
+                    <strong>Período:</strong> {solicitacao.dataInicio ? new Date(solicitacao.dataInicio).toLocaleDateString("pt-BR") : "—"} a {solicitacao.dataFim ? new Date(solicitacao.dataFim).toLocaleDateString("pt-BR") : "—"}
+                  </p>
                 </div>
-                <div className="text-left sm:text-right">
-                  <p className="text-white/70 text-sm">Valor total</p>
-                  <p className="font-serif text-4xl">R$ {solicitacaoAtiva.valor}</p>
-                </div>
+              </div>
+              <div className="bg-white/10 border border-white/20 rounded-2xl p-4 text-xs space-y-1 max-w-xs animate-in fade-in duration-300">
+                <p className="font-bold flex items-center gap-1">
+                  <Shield size={14} className="text-emerald-300" />
+                  Time {solicitacao.destino ? solicitacao.destino.split(",")[0].trim() : "Recife"} Ativo
+                </p>
+                <p className="text-white/80 leading-relaxed">
+                  Você é atendida de forma colaborativa por toda a nossa equipe local de especialistas regionais.
+                </p>
               </div>
             </div>
 
-            <div className="bg-card border rounded-3xl p-7">
-              <div className="flex items-center justify-between gap-3 flex-wrap mb-5">
-                <div>
-                  <h2 className="text-xl">Status da viagem</h2>
-                  <p className="text-sm text-muted-foreground">{statusExibicao}</p>
+            {/* Wallet Section (No history, no BRL equivalence, just credit count + button) */}
+            <div className="bg-card border rounded-[2rem] p-6 sm:p-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="flex items-center gap-5">
+                <div className="w-12 h-12 rounded-2xl bg-[var(--moss)]/10 text-[var(--moss)] flex items-center justify-center shrink-0">
+                  <Wallet size={24} />
                 </div>
-                <div className="flex items-center gap-3 flex-wrap justify-end">
-                  <span className={`inline-flex items-center rounded-full border px-4 py-2 text-sm font-medium ${classeDoStatus(solicitacaoAtiva.status)}`}>
-                    {statusExibicao}
+                <div>
+                  <h3 className="text-lg font-serif font-semibold">Seus Créditos de Viagem</h3>
+                  <p className="text-xs text-muted-foreground font-medium">Utilizados para contratar serviços do time local.</p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto shrink-0">
+                <div className="bg-secondary/40 border rounded-2xl px-5 py-3 flex items-baseline gap-1 shrink-0 justify-center">
+                  <span className="text-3xl font-serif font-bold text-[var(--moss)]">
+                    {auth.user?.saldoCreditos ?? 0}
                   </span>
-                  {solicitacaoAtiva.status.trim().toLowerCase() === "aceita" && podeConcluirViagem && (
-                    <button
-                      onClick={() => setConfirmarConclusaoAberto(true)}
-                      className="inline-flex items-center justify-center rounded-full bg-[var(--moss)] border border-transparent px-4 py-2 text-sm font-medium text-white hover:opacity-90 cursor-pointer"
-                    >
-                      Concluir viagem
-                    </button>
-                  )}
-                  {podeCancelar && (
-                    <button
-                      onClick={() => void cancelarSolicitacao()}
-                      disabled={cancelando}
-                      className="inline-flex items-center justify-center rounded-full border border-[var(--terracotta)]/30 px-4 py-2 text-sm font-medium text-[var(--terracotta)] hover:bg-[var(--terracotta)]/10 disabled:opacity-60 cursor-pointer"
-                    >
-                      {cancelando ? "Cancelando..." : "Cancelar solicitação"}
-                    </button>
-                  )}
+                  <span className="text-xs text-muted-foreground font-semibold">créditos</span>
                 </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-4">
-                {etapas.map((etapa, indice) => {
-                  const numeroEtapa = indice + 1;
-                  const ativa = numeroEtapa <= etapaAtual;
-
-                  return (
-                    <div
-                      key={etapa.chave}
-                      className={`rounded-2xl border p-4 ${ativa ? "border-[var(--moss)]/20 bg-[var(--moss)]/5" : "border-border bg-background"}`}
-                    >
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold ${ativa ? "bg-[var(--moss)] text-white" : "bg-muted text-muted-foreground"}`}>
-                          {ativa ? <CheckCircle2 size={16} /> : numeroEtapa}
-                        </div>
-                        <p className="text-sm font-medium">{etapa.label}</p>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {etapa.chave === "aberto" && "Aguardando a madrinha aceitar sua solicitação."}
-                        {etapa.chave === "aceito" && "A madrinha confirmou sua viagem."}
-                        {etapa.chave === "andamento" && "Sua viagem já está em andamento."}
-                        {etapa.chave === "concluida" && "A viagem foi concluída."}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {statusExibicao.toLowerCase().includes("confirmado") && whatsappUrl && (
-              <div className="bg-card border rounded-3xl p-6 mt-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <Avatar className="w-14 h-14">
-                    {solicitacaoAtual.madrinha.fotoPerfilUrl && (
-                      <AvatarImage src={solicitacaoAtual.madrinha.fotoPerfilUrl} alt={solicitacaoAtual.madrinha.nome} className="object-cover" />
-                    )}
-                    <AvatarFallback>{solicitacaoAtual.madrinha.nome.split(" ").map((n) => n[0]).slice(0, 2).join("")}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-semibold">{solicitacaoAtual.madrinha.nome}</p>
-                    <p className="text-sm text-muted-foreground">Sua madrinha em {solicitacaoAtual.destino ?? solicitacaoAtual.descricao}</p>
-                  </div>
-                </div>
-                <a
-                  href={whatsappUrl}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="w-full inline-flex items-center justify-center gap-2 bg-[#25D366] text-white rounded-full py-3 font-medium"
+                <button
+                  onClick={() => navigate({ to: "/carteira" })}
+                  className="w-full sm:w-auto bg-[var(--moss)] text-white hover:opacity-90 px-6 py-3.5 rounded-2xl font-medium transition cursor-pointer text-sm shadow-sm text-center"
                 >
-                  <MessageCircle size={18} /> Conversar no WhatsApp
-                </a>
-              </div>
-            )}
-
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="bg-card border rounded-3xl p-6 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-14 h-14 rounded-2xl bg-[var(--sand)]/60 overflow-hidden flex items-center justify-center text-[var(--moss)] font-semibold">
-                    {solicitacaoAtiva.madrinha.nome
-                      .split(" ")
-                      .filter(Boolean)
-                      .slice(0, 2)
-                      .map((parte) => parte[0]?.toUpperCase())
-                      .join("")}
-                  </div>
-                  <div>
-                    <p className="font-semibold">{solicitacaoAtiva.madrinha.nome}</p>
-                    <p className="text-sm text-muted-foreground">
-                      Madrinha verificada e disponível na sua solicitação
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div className="rounded-2xl bg-muted/40 p-4">
-                    <p className="text-muted-foreground mb-1">Ida</p>
-                    <p className="font-medium">{formatarData(solicitacaoAtiva.dataInicio)}</p>
-                  </div>
-                  <div className="rounded-2xl bg-muted/40 p-4">
-                    <p className="text-muted-foreground mb-1">Volta</p>
-                    <p className="font-medium">{formatarData(solicitacaoAtiva.dataFim)}</p>
-                  </div>
-                  <div className="rounded-2xl bg-muted/40 p-4">
-                    <p className="text-muted-foreground mb-1">Diárias</p>
-                    <p className="font-medium">{solicitacaoAtiva.qtdDiarias}</p>
-                  </div>
-                  <div className="rounded-2xl bg-muted/40 p-4">
-                    <p className="text-muted-foreground mb-1">Preço da diária</p>
-                    <p className="font-medium">R$ {solicitacaoAtiva.madrinha.precoDiaria}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-card border rounded-3xl p-6 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-14 h-14 rounded-2xl bg-[var(--sand)]/50 flex items-center justify-center text-[var(--moss)]">
-                    <Calendar size={24} />
-                  </div>
-                  <div>
-                    <p className="font-semibold">Resumo da solicitação</p>
-                    <p className="text-sm text-muted-foreground">Criada em {formatarData(solicitacaoAtiva.dataCriacao)}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-center justify-between gap-3 border-b pb-3">
-                    <span className="text-muted-foreground">Status</span>
-                    <span className="font-medium">{solicitacaoAtiva.status}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 border-b pb-3">
-                    <span className="text-muted-foreground">Valor total</span>
-                    <span className="font-medium">R$ {solicitacaoAtiva.valor}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Descrição</span>
-                    <span className="font-medium text-right">{solicitacaoAtiva.descricao}</span>
-                  </div>
-                </div>
+                  Adquirir Créditos / Recarregar
+                </button>
               </div>
             </div>
-          </>
-        )}
 
-        {!loading && !error && solicitacoesHistorico.length > 0 && (
-          <div className="space-y-6">
-            <div className="bg-card border rounded-3xl p-7">
-              <div className="flex items-center justify-between gap-3 flex-wrap mb-5">
-                <div>
-                  <h2 className="text-xl">Histórico de solicitações</h2>
-                  <p className="text-sm text-muted-foreground">Solicitações concluídas, canceladas ou recusadas</p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {solicitacoesHistorico.map((solicitacao) => (
-                  <div key={solicitacao.id} className="border rounded-2xl p-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                    <div className="space-y-1">
-                      <p className="font-semibold">{solicitacao.destino ?? solicitacao.descricao}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {solicitacao.madrinha.nome} · {formatarData(solicitacao.dataInicio)} → {formatarData(solicitacao.dataFim)}
-                      </p>
-                      {solicitacao.status.trim().toLowerCase() === "avaliada" && solicitacao.avaliacao && (
-                        <div className="mt-2 bg-muted/40 border rounded-2xl p-3 text-xs max-w-md space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-muted-foreground">Sua avaliação:</span>
-                            <span className="text-[var(--gold)]">
-                              {"★".repeat(solicitacao.avaliacao.nota)}{"☆".repeat(5 - solicitacao.avaliacao.nota)}
+            {/* Middle Section Grid */}
+            <div className="grid lg:grid-cols-3 gap-8">
+              
+              {/* Left Column (2/3 width): Service Catalog */}
+              <div className="lg:col-span-2 space-y-8">
+                <div className="bg-card border rounded-[2rem] p-6 sm:p-8 shadow-sm space-y-6">
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-serif font-semibold">Contratação de Serviços</h3>
+                    <p className="text-sm text-muted-foreground">Selecione o serviço para acionar e enviar para a fila de aceite das Madrinhas do time local.</p>
+                  </div>
+                  
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {servicosInfo.map((servico) => (
+                      <div key={servico.nome} className="border rounded-2xl p-4 flex flex-col justify-between hover:border-[var(--moss)]/40 transition bg-background">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="w-8 h-8 rounded-xl bg-[var(--moss)]/10 text-[var(--moss)] flex items-center justify-center">
+                              {servico.icon}
+                            </span>
+                            <span className="bg-secondary px-2.5 py-0.5 rounded-full text-xs font-semibold">
+                              {servico.nome.includes("Acompanhamento") ? "5 cr/hora" : `${servico.creditos} cr`}
                             </span>
                           </div>
-                          {solicitacao.avaliacao.comentario && (
-                            <p className="italic text-foreground/80">"{solicitacao.avaliacao.comentario}"</p>
-                          )}
+                          <h4 className="font-semibold text-sm">{servico.nome}</h4>
+                          <p className="text-xs text-muted-foreground leading-relaxed">{servico.desc}</p>
+                        </div>
+                        
+                        <button
+                          onClick={() => {
+                            if (servico.nome.includes("Aeroporto") || servico.nome.includes("Acompanhamento") || servico.nome.includes("Suporte") || servico.nome.includes("Dicas")) {
+                              setModalServicoAtivo(servico.nome);
+                            } else {
+                              void handleIniciarServicoSubmit(new Event("submit") as any);
+                            }
+                          }}
+                          disabled={iniciandoServico || (auth.user?.saldoCreditos ?? 0) < (servico.nome.includes("Acompanhamento") ? 5 : servico.creditos)}
+                          className="w-full mt-4 bg-secondary text-foreground text-xs py-2.5 rounded-xl hover:bg-[var(--moss)] hover:text-white transition disabled:opacity-50 cursor-pointer font-medium"
+                        >
+                          {(auth.user?.saldoCreditos ?? 0) < (servico.nome.includes("Acompanhamento") ? 5 : servico.creditos) ? "Saldo Insuficiente" : "Contratar Serviço"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column (1/3 width): Support Chat */}
+              <div className="lg:col-span-1">
+                <div className="bg-card border rounded-[2rem] shadow-sm h-[560px] overflow-hidden relative flex bg-secondary/5 flex-col w-full">
+                  {/* SCREEN 1: Lista de Conversas (Full Width) */}
+                  <div className={`w-full h-full flex flex-col absolute inset-0 transition-all duration-300 ${
+                sessaoSelecionada ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100"
+              }`}>
+                <div className="p-4 border-b bg-card">
+                  <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Minhas Conversas</h4>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                  {sessoesChat.length === 0 ? (
+                    <div className="text-center py-16 text-sm text-muted-foreground italic">
+                      Nenhuma conversa ou serviço iniciado no momento.
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {sessoesChat.map((s) => {
+                        const hasMadrinha = !!s.madrinhaId;
+                        return (
+                          <button
+                            key={s.id}
+                            onClick={() => handleSelectSessao(s)}
+                            className="w-full text-left p-4 rounded-2xl border bg-background hover:bg-muted border-border transition flex items-center gap-4 cursor-pointer shadow-xs"
+                          >
+                            <div className="w-10 h-10 rounded-full shrink-0 flex items-center justify-center font-bold text-xs uppercase bg-[var(--moss)]/10 text-[var(--moss)]">
+                              {s.servicoTipo.substring(0, 2)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between items-start gap-1">
+                                <p className="font-semibold text-xs truncate">
+                                  {s.servicoTipo}
+                                </p>
+                                <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase shrink-0 ${
+                                  s.status === "Pendente"
+                                    ? "bg-amber-100 text-amber-800 animate-pulse"
+                                    : s.status === "Ativa"
+                                      ? "bg-emerald-100 text-emerald-800"
+                                      : "bg-gray-100 text-gray-800"
+                                }`}>
+                                  {s.status}
+                                </span>
+                              </div>
+                              <p className="text-[10px] truncate mt-0.5 text-muted-foreground">
+                                {hasMadrinha ? s.madrinhaNome : "Aguardando time..."}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* SCREEN 2: Active Chat (Full Width) */}
+              <div className={`w-full h-full flex flex-col absolute inset-0 transition-all duration-300 bg-background ${
+                sessaoSelecionada ? "translate-x-0 opacity-100" : "translate-x-full opacity-0 pointer-events-none"
+              }`}>
+                {sessaoSelecionada && (
+                  <>
+                    {/* Chat Header */}
+                    <div className="p-4 border-b bg-secondary/15 flex items-center justify-between gap-3 shrink-0">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <button
+                          onClick={() => setSessaoSelecionada(null)}
+                          className="mr-1 text-muted-foreground hover:text-foreground cursor-pointer p-1.5 rounded-full hover:bg-secondary transition shrink-0"
+                          title="Voltar para conversas"
+                        >
+                          <ArrowLeft size={20} />
+                        </button>
+                        <div
+                          className="w-9 h-9 rounded-full border border-[var(--moss)] bg-cover bg-center shrink-0"
+                          style={{ backgroundImage: `url(${sessaoSelecionada.madrinhaFotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'})` }}
+                        />
+                        <div className="min-w-0">
+                          <p className="font-semibold text-xs truncate">
+                            {sessaoSelecionada.madrinhaNome || "Time Recife (Pareamento)"}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {sessaoSelecionada.madrinhaId 
+                              ? `Atendida por ${sessaoSelecionada.madrinhaNome} (⭐ ${sessaoSelecionada.madrinhaMediaAvaliacao?.toFixed(1) ?? "5.0"})` 
+                              : "Buscando especialista disponível..."}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                          sessaoSelecionada.status === "Pendente"
+                            ? "bg-amber-100 text-amber-800 animate-pulse"
+                            : sessaoSelecionada.status === "Ativa"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-gray-100 text-gray-800"
+                        }`}>
+                          {sessaoSelecionada.status}
+                        </span>
+                        {tempoRestanteStr && (
+                          <div className="flex items-center gap-1.5 bg-amber-100 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-full text-[10px] font-semibold animate-pulse shrink-0">
+                            <Clock size={10} /> {tempoRestanteStr}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Chat Window Messages / Interface */}
+                    <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-secondary/5">
+                      {sessaoSelecionada.status === "Pendente" && !sessaoSelecionada.madrinhaId && (
+                        <div className="p-3 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-2 text-xs text-amber-900 leading-normal">
+                          <AlertCircle className="shrink-0 text-amber-600 mt-0.5" size={14} />
+                          <div>
+                            <p className="font-semibold">Buscando Madrinha disponível...</p>
+                            <p className="text-amber-800/80">Esta solicitação foi enviada para a central do Time Local. A primeira Madrinha que aceitar assumirá seu atendimento.</p>
+                          </div>
                         </div>
                       )}
-                    </div>
-                    <div className="flex items-center gap-3 flex-wrap sm:self-center">
-                      {solicitacao.status.trim().toLowerCase() === "concluida" && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSolicitacaoParaAvaliar(solicitacao);
-                            setModalAvaliacaoAberto(true);
-                          }}
-                          className="inline-flex items-center justify-center rounded-full bg-[var(--moss)] text-white px-4 py-2 text-xs font-medium hover:opacity-90 transition cursor-pointer"
-                        >
-                          Avaliar Madrinha
-                        </button>
+
+                      {sessaoSelecionada.servicoTipo.toLowerCase().includes("liga") ? (
+                        <div className="p-6 bg-card border rounded-2xl text-center space-y-4 shadow-inner max-w-xs mx-auto my-4">
+                          {sessaoSelecionada.status === "Pendente" ? (
+                            <>
+                              <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto animate-pulse">
+                                <Phone size={28} className="stroke-[2]" />
+                              </div>
+                              <div className="space-y-1">
+                                <p className="font-semibold text-sm">Ligando para o Time Recife...</p>
+                                <p className="text-[10px] text-muted-foreground">Aguardando alguma Madrinha aceitar a chamada</p>
+                              </div>
+                            </>
+                          ) : sessaoSelecionada.status === "Finalizada" ? (
+                            <>
+                              <div className="w-16 h-16 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center mx-auto">
+                                <Phone size={28} className="stroke-[2]" />
+                              </div>
+                              <div className="space-y-1">
+                                <p className="font-semibold text-gray-500 text-sm">Chamada por Voz Encerrada</p>
+                                <p className="text-[10px] text-muted-foreground">Esta ligação foi finalizada.</p>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto animate-pulse">
+                                <Phone size={28} className="stroke-[2] animate-bounce" />
+                              </div>
+                              <div className="space-y-1">
+                                <p className="font-semibold text-emerald-600 text-sm">Suporte de Voz Conectado!</p>
+                                <p className="text-xs">Madrinha: <strong>{sessaoSelecionada.madrinhaNome}</strong></p>
+                                <p className="text-[10px] text-muted-foreground mt-2">Use o telefone para conversar diretamente por voz.</p>
+                                <canvas
+                                  ref={canvasRef}
+                                  width={200}
+                                  height={60}
+                                  className="w-full h-[60px] rounded-lg mt-3 bg-secondary/10 border border-secondary/20"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      await api.post(`/chat/sessoes/${sessaoSelecionada.id}/encerrar`, {}, {
+                                        headers: { Authorization: `Bearer ${auth.token}` }
+                                      });
+                                      await fetchCoreData();
+                                    } catch (err) {
+                                      console.error(err);
+                                    }
+                                  }}
+                                  className="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-xl text-xs font-semibold mt-4 transition cursor-pointer"
+                                >
+                                  Encerrar Chamada
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        loadingChat && mensagens.length === 0 ? (
+                          <div className="text-center py-4 text-xs text-muted-foreground">Carregando conversa...</div>
+                        ) : (
+                          mensagens.map((msg) => {
+                            const isSystem = msg.remetenteId === 0;
+                            const isMe = msg.remetenteId === auth.user?.id;
+
+                            if (isSystem) {
+                              return (
+                                <div key={msg.id} className="text-center py-2 px-4 rounded-xl bg-secondary border text-[11px] text-muted-foreground max-w-[85%] mx-auto leading-relaxed">
+                                  {msg.texto}
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div
+                                key={msg.id}
+                                className={`flex flex-col max-w-[75%] ${isMe ? "ml-auto items-end" : "mr-auto items-start"}`}
+                              >
+                                <span className="text-[9px] text-muted-foreground mb-0.5">
+                                  {isMe ? "Você" : sessaoSelecionada.madrinhaNome}
+                                </span>
+                                <div className={`p-3 rounded-2xl text-xs leading-normal ${
+                                  isMe
+                                    ? "bg-[var(--moss)] text-white rounded-tr-none"
+                                    : "bg-card border text-foreground rounded-tl-none shadow-xs"
+                                }`}>
+                                  {msg.texto}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )
                       )}
-                      <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${classeDoStatus(solicitacao.status)}`}>
-                        {tituloDoStatus(solicitacao.status, solicitacao.dataInicio, solicitacao.dataFim)}
-                      </span>
-                      <span className="text-sm font-medium">R$ {solicitacao.valor}</span>
+                    </div>
+
+                    {/* Chat Footer / Input or Rating */}
+                    {sessaoSelecionada.status === "Finalizada" ? (
+                      <div className="p-4 border-t bg-card shrink-0">
+                        {!sessaoSelecionada.avaliada ? (
+                          <form onSubmit={handleCriarAvaliacao} className="space-y-3">
+                            <p className="text-xs font-semibold text-center text-foreground">Como foi o atendimento deste serviço?</p>
+                            <div className="flex justify-center gap-1.5">
+                              {[1, 2, 3, 4, 5].map((num) => (
+                                <button
+                                  key={num}
+                                  type="button"
+                                  onClick={() => setAvaliacaoNota(num)}
+                                  className="text-amber-400 hover:scale-110 transition cursor-pointer"
+                                >
+                                  <Star size={24} fill={avaliacaoNota >= num ? "currentColor" : "none"} />
+                                </button>
+                              ))}
+                            </div>
+                            <input
+                              value={avaliacaoComentario}
+                              onChange={(e) => setAvaliacaoComentario(e.target.value)}
+                              placeholder="Escreva um comentário opcional..."
+                              className="w-full bg-secondary border rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--moss)] placeholder:text-muted-foreground/60"
+                            />
+
+                            <button
+                              type="submit"
+                              disabled={enviandoAvaliacaoServico}
+                              className="w-full bg-[var(--moss)] text-white hover:opacity-90 py-2.5 rounded-xl font-medium transition cursor-pointer text-xs"
+                            >
+                              {enviandoAvaliacaoServico ? "Enviando..." : "Enviar Avaliação"}
+                            </button>
+                          </form>
+                        ) : (
+                          <div className="text-center py-2 text-xs text-muted-foreground font-semibold">
+                            ✓ Este atendimento foi encerrado e avaliado. Obrigado!
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      !sessaoSelecionada.servicoTipo.toLowerCase().includes("liga") && (
+                        <form onSubmit={handleEnviarMensagem} className="p-3 border-t bg-card flex gap-2 shrink-0">
+                          <input
+                            value={textoMensagem}
+                            onChange={(e) => setTextoMensagem(e.target.value)}
+                            placeholder={sessaoSelecionada.madrinhaId ? "Escreva sua mensagem..." : "Aguardando aceite da Madrinha..."}
+                            disabled={!sessaoSelecionada || !sessaoSelecionada.madrinhaId}
+                            className="flex-1 bg-secondary border rounded-xl px-4 py-3 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--moss)] placeholder:text-muted-foreground/60 disabled:opacity-60"
+                          />
+                          <button
+                            type="submit"
+                            disabled={!sessaoSelecionada || !textoMensagem.trim() || enviandoMensagem || !sessaoSelecionada.madrinhaId}
+                            className="bg-[var(--moss)] text-white p-3 rounded-xl hover:opacity-90 transition disabled:opacity-50 cursor-pointer shrink-0"
+                          >
+                            <Send size={14} />
+                          </button>
+                        </form>
+                      )
+                    )}
+                  </>
+                )}
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+        {/* Equipe de Madrinhas Locais */}
+        {madrinhasTime.length > 0 && (
+          <div className="bg-card border rounded-[2rem] p-6 sm:p-8 shadow-sm space-y-6">
+            <div className="space-y-1">
+              <h3 className="text-lg font-serif font-semibold">Equipe Local de Madrinhas</h3>
+              <p className="text-sm text-muted-foreground">Conheça as especialistas locais verificadas que dão suporte ao seu destino.</p>
+            </div>
+            
+            <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              {madrinhasTime.map((m) => (
+                <Link
+                  key={m.id}
+                  to="/madrinha/$id"
+                  params={{
+                    id: m.id.toString()
+                  }}
+                  className="border rounded-2xl p-5 hover:border-[var(--moss)] hover:shadow-md transition bg-background flex flex-col items-center text-center space-y-4 cursor-pointer group text-left"
+                >
+                  <div
+                    className="w-20 h-20 rounded-full border-2 border-[var(--moss)]/20 bg-cover bg-center shadow-inner group-hover:scale-105 transition"
+                    style={{ backgroundImage: `url(${m.fotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'})` }}
+                  />
+                  <div className="space-y-1 text-center">
+                    <h4 className="font-bold text-sm text-foreground group-hover:text-[var(--moss)] transition">{m.nome}</h4>
+                    <p className="text-xs text-muted-foreground">📍 {m.cidade}, {m.estado}</p>
+                  </div>
+                  
+                  <div className="flex items-center gap-4 text-xs border-t pt-3 w-full justify-around text-foreground/80">
+                    <div className="text-center">
+                      <p className="text-[10px] text-muted-foreground uppercase font-semibold font-sans">Atendimentos</p>
+                      <p className="font-bold text-emerald-700">{m.qtdSolicitacoes || 0}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] text-muted-foreground uppercase font-semibold font-sans">Avaliação</p>
+                      <p className="font-bold text-amber-600 flex items-center gap-0.5 justify-center">
+                        ★ {m.mediaAvaliacao ? m.mediaAvaliacao.toFixed(1) : "5.0"}
+                      </p>
                     </div>
                   </div>
-                ))}
-              </div>
+                </Link>
+              ))}
             </div>
           </div>
         )}
+      </div>
+    )}
 
-        <div className="bg-card border rounded-3xl p-7">
-          <h2 className="text-xl mb-4 font-medium flex items-center gap-2">Configurações de perfil</h2>
-          <div className="flex flex-col sm:flex-row items-center gap-5">
-            <div className="w-20 h-20 rounded-full bg-[var(--sand)]/60 overflow-hidden flex items-center justify-center text-[var(--moss)] font-semibold text-2xl border shrink-0">
-              {auth.user?.fotoPerfilUrl ? (
-                <img src={auth.user.fotoPerfilUrl} alt={auth.user.nome} className="w-full h-full object-cover" />
-              ) : (
-                <span>{auth.user?.nome ? auth.user.nome.split(" ").map((n) => n[0]).slice(0, 2).join("") : "U"}</span>
-              )}
+      {/* Modal/Formulário para Detalhamento de Serviços Específicos */}
+      {modalServicoAtivo && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <form onSubmit={handleIniciarServicoSubmit} className="bg-card border rounded-[2.5rem] max-w-md w-full p-8 shadow-2xl space-y-6">
+            <h3 className="text-xl font-serif font-bold text-center">Especificação de Serviço</h3>
+            
+            <div className="p-3 bg-secondary/40 rounded-2xl text-xs space-y-1">
+              <p className="font-semibold text-foreground">{modalServicoAtivo}</p>
+              <p className="text-muted-foreground">O Time Recife receberá essas especificações para aceitar seu chamado.</p>
             </div>
-            <div className="flex flex-col items-center sm:items-start gap-1">
-              <span className="text-sm font-semibold">{auth.user?.nome}</span>
-              <span className="text-xs text-muted-foreground">{auth.user?.email}</span>
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
-                <label className="cursor-pointer bg-[var(--moss)] text-white hover:bg-[var(--moss)]/90 px-4 py-2 rounded-xl text-xs font-semibold shadow-sm inline-block transition disabled:opacity-60">
-                  {fotoLoading ? "Enviando..." : "Alterar foto"}
+
+            {/* Render conditional inputs */}
+            {modalServicoAtivo.toLowerCase().includes("busca") && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Aeroporto de Destino</label>
                   <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFotoUpload}
-                    disabled={fotoLoading}
-                    className="hidden"
+                    required
+                    value={aeroporto}
+                    onChange={(e) => setAeroporto(e.target.value)}
+                    placeholder="Ex: Aeroporto Internacional do Recife"
+                    className="w-full bg-secondary border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--moss)] focus:outline-none"
                   />
-                </label>
-                {auth.user?.fotoPerfilUrl && (
-                  <button
-                    type="button"
-                    onClick={handleFotoRemove}
-                    disabled={fotoLoading}
-                    className="text-xs font-semibold text-red-600 hover:text-red-700 px-3 py-2 border border-red-200 hover:bg-red-50 rounded-xl transition disabled:opacity-60"
-                  >
-                    Remover foto
-                  </button>
-                )}
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Horário Previsto de Desembarque</label>
+                  <input
+                    required
+                    type="datetime-local"
+                    value={horarioDesembarque}
+                    onChange={(e) => setHorarioDesembarque(e.target.value)}
+                    className="w-full bg-secondary border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--moss)] focus:outline-none"
+                  />
+                </div>
+                <div className="text-xs text-muted-foreground text-center">Custo fixo: <strong>10 créditos</strong></div>
               </div>
-              {fotoError && <span className="text-xs text-red-600 mt-1">{fotoError}</span>}
-              <span className="text-xs text-muted-foreground mt-1 block">Formatos aceitos: JPG, JPEG, PNG ou WEBP. Máx. 5MB.</span>
-            </div>
-          </div>
-        </div>
-
-      {confirmarConclusaoAberto && solicitacaoAtiva && (
-        <div className="fixed inset-0 z-55 flex items-center justify-center bg-black/55 backdrop-blur-sm p-4">
-          <div className="bg-card border w-full max-w-md rounded-[2rem] p-8 space-y-6 shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="space-y-2">
-              <h3 className="text-2xl font-serif">Concluir Viagem</h3>
-              <p className="text-sm text-muted-foreground">
-                Tem certeza que deseja marcar esta viagem como concluída? Esta ação não pode ser desfeita.
-              </p>
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setConfirmarConclusaoAberto(false)}
-                className="flex-1 border rounded-full py-3.5 text-sm font-medium hover:bg-muted transition cursor-pointer"
-                disabled={concluindo}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmarConclusaoAberto(false);
-                  void concluirSolicitacao(solicitacaoAtiva.id);
-                }}
-                className="flex-1 bg-[var(--moss)] text-white rounded-full py-3.5 text-sm font-medium hover:opacity-90 transition cursor-pointer disabled:opacity-60"
-                disabled={concluindo}
-              >
-                {concluindo ? "Concluindo..." : "Sim, concluir"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {modalAvaliacaoAberto && solicitacaoParaAvaliar && (
-        <div className="fixed inset-0 z-55 flex items-center justify-center bg-black/55 backdrop-blur-sm p-4">
-          <div className="bg-card border w-full max-w-md rounded-[2rem] p-8 space-y-6 shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="space-y-2">
-              <h3 className="text-2xl font-serif">Avaliar Madrinha</h3>
-              <p className="text-sm text-muted-foreground">
-                Como foi sua experiência com a madrinha <strong>{solicitacaoParaAvaliar.madrinha.nome}</strong> na sua viagem para {solicitacaoParaAvaliar.destino ?? solicitacaoParaAvaliar.descricao}?
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold block">Sua nota</label>
-              <div className="flex gap-2">
-                {[1, 2, 3, 4, 5].map((num) => (
-                  <button
-                    key={num}
-                    type="button"
-                    onClick={() => setNota(num)}
-                    className="text-3xl hover:scale-110 transition cursor-pointer font-medium"
-                  >
-                    {num <= nota ? (
-                      <span className="text-[var(--gold)]">★</span>
-                    ) : (
-                      <span className="text-muted-foreground/30">★</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="block space-y-2">
-              <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Comentário / Feedback (opcional)</span>
-              <textarea
-                value={comentario}
-                onChange={(e) => setComentario(e.target.value)}
-                placeholder="Ex: Ela foi maravilhosa, me acolheu super bem..."
-                rows={4}
-                className="w-full rounded-2xl border border-black/10 bg-background px-4 py-3 text-sm outline-none transition focus:border-[var(--moss)] focus:ring-2 focus:ring-[var(--moss)]/15 resize-none"
-              />
-            </label>
-
-            {erroAvaliacao && (
-              <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2">
-                {erroAvaliacao}
-              </p>
             )}
 
-            <div className="flex gap-3 pt-2">
+            {modalServicoAtivo.toLowerCase().includes("acompanhamento") && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Locais / Roteiro a Visitar</label>
+                  <textarea
+                    required
+                    value={locaisVisitados}
+                    onChange={(e) => setLocaisVisitados(e.target.value)}
+                    placeholder="Ex: Marco Zero, Olinda Histórica, Praia de Boa Viagem..."
+                    rows={3}
+                    className="w-full bg-secondary border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--moss)] focus:outline-none resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Quantidade de Horas</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      required
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={quantidadeHoras}
+                      onChange={(e) => setQuantidadeHoras(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-24 bg-secondary border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--moss)] focus:outline-none text-center"
+                    />
+                    <span className="text-xs text-muted-foreground">horas de acompanhamento</span>
+                  </div>
+                </div>
+                <div className="p-3 bg-[var(--moss)]/5 border border-[var(--moss)]/10 rounded-xl flex items-center justify-between text-xs">
+                  <span>Custo total calculado:</span>
+                  <span className="font-bold text-[var(--moss)]">{quantidadeHoras * 5} créditos</span>
+                </div>
+              </div>
+            )}
+
+            {(modalServicoAtivo.toLowerCase().includes("dicas") || modalServicoAtivo.toLowerCase().includes("suporte")) && (
+              <div className="space-y-2 text-center text-xs text-muted-foreground py-4">
+                <p>Este serviço consumirá os créditos correspondentes e abrirá a fila de atendimento.</p>
+                <p className="font-bold text-foreground">Deseja acionar?</p>
+                <p className="text-xs text-[var(--moss)] font-bold mt-2">
+                  Custo: {modalServicoAtivo.toLowerCase().includes("dicas") ? "1 crédito" : "3 créditos"}
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setModalAvaliacaoAberto(false);
-                  setSolicitacaoParaAvaliar(null);
-                  setNota(5);
-                  setComentario("");
-                  setErroAvaliacao("");
-                }}
-                className="flex-1 border rounded-full py-3.5 text-sm font-medium hover:bg-muted transition cursor-pointer"
-                disabled={enviandoAvaliacao}
+                onClick={() => setModalServicoAtivo(null)}
+                className="w-1/2 border py-3 rounded-2xl text-sm font-medium hover:bg-muted cursor-pointer text-center"
               >
-                Cancelar
+                Voltar
               </button>
               <button
-                type="button"
-                onClick={enviarAvaliacao}
-                className="flex-1 bg-[var(--moss)] text-white rounded-full py-3.5 text-sm font-medium hover:opacity-90 transition cursor-pointer disabled:opacity-60"
-                disabled={enviandoAvaliacao}
+                type="submit"
+                disabled={iniciandoServico}
+                className="w-1/2 bg-[var(--moss)] text-white py-3 rounded-2xl text-sm font-medium hover:opacity-90 cursor-pointer text-center"
               >
-                {enviandoAvaliacao ? "Enviando..." : "Enviar avaliação"}
+                {iniciandoServico ? "Processando..." : "Confirmar"}
               </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
       </div>

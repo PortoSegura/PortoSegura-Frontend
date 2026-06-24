@@ -13,6 +13,7 @@ import { Route as MinhaViagemRouteImport } from './routes/minha-viagem'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JornadaMadrinhaRouteImport } from './routes/jornada-madrinha'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as CarteiraRouteImport } from './routes/carteira'
 import { Route as CandidaturaRouteImport } from './routes/candidatura'
 import { Route as CadastroRouteImport } from './routes/cadastro'
 import { Route as BuscaRouteImport } from './routes/busca'
@@ -38,6 +39,11 @@ const JornadaMadrinhaRoute = JornadaMadrinhaRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CarteiraRoute = CarteiraRouteImport.update({
+  id: '/carteira',
+  path: '/carteira',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CandidaturaRoute = CandidaturaRouteImport.update({
@@ -77,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/busca': typeof BuscaRoute
   '/cadastro': typeof CadastroRoute
   '/candidatura': typeof CandidaturaRoute
+  '/carteira': typeof CarteiraRoute
   '/dashboard': typeof DashboardRoute
   '/jornada-madrinha': typeof JornadaMadrinhaRoute
   '/login': typeof LoginRoute
@@ -89,6 +96,7 @@ export interface FileRoutesByTo {
   '/busca': typeof BuscaRoute
   '/cadastro': typeof CadastroRoute
   '/candidatura': typeof CandidaturaRoute
+  '/carteira': typeof CarteiraRoute
   '/dashboard': typeof DashboardRoute
   '/jornada-madrinha': typeof JornadaMadrinhaRoute
   '/login': typeof LoginRoute
@@ -102,6 +110,7 @@ export interface FileRoutesById {
   '/busca': typeof BuscaRoute
   '/cadastro': typeof CadastroRoute
   '/candidatura': typeof CandidaturaRoute
+  '/carteira': typeof CarteiraRoute
   '/dashboard': typeof DashboardRoute
   '/jornada-madrinha': typeof JornadaMadrinhaRoute
   '/login': typeof LoginRoute
@@ -116,6 +125,7 @@ export interface FileRouteTypes {
     | '/busca'
     | '/cadastro'
     | '/candidatura'
+    | '/carteira'
     | '/dashboard'
     | '/jornada-madrinha'
     | '/login'
@@ -128,6 +138,7 @@ export interface FileRouteTypes {
     | '/busca'
     | '/cadastro'
     | '/candidatura'
+    | '/carteira'
     | '/dashboard'
     | '/jornada-madrinha'
     | '/login'
@@ -140,6 +151,7 @@ export interface FileRouteTypes {
     | '/busca'
     | '/cadastro'
     | '/candidatura'
+    | '/carteira'
     | '/dashboard'
     | '/jornada-madrinha'
     | '/login'
@@ -153,6 +165,7 @@ export interface RootRouteChildren {
   BuscaRoute: typeof BuscaRoute
   CadastroRoute: typeof CadastroRoute
   CandidaturaRoute: typeof CandidaturaRoute
+  CarteiraRoute: typeof CarteiraRoute
   DashboardRoute: typeof DashboardRoute
   JornadaMadrinhaRoute: typeof JornadaMadrinhaRoute
   LoginRoute: typeof LoginRoute
@@ -188,6 +201,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/carteira': {
+      id: '/carteira'
+      path: '/carteira'
+      fullPath: '/carteira'
+      preLoaderRoute: typeof CarteiraRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/candidatura': {
@@ -241,6 +261,7 @@ const rootRouteChildren: RootRouteChildren = {
   BuscaRoute: BuscaRoute,
   CadastroRoute: CadastroRoute,
   CandidaturaRoute: CandidaturaRoute,
+  CarteiraRoute: CarteiraRoute,
   DashboardRoute: DashboardRoute,
   JornadaMadrinhaRoute: JornadaMadrinhaRoute,
   LoginRoute: LoginRoute,

@@ -20,21 +20,43 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
           <nav className="flex items-center gap-1 sm:gap-2 text-sm flex-wrap justify-end">
             {auth.isAuthenticated ? (
               <>
+                {!isMadrinha && (
+                  <Link
+                    to="/carteira"
+                    activeProps={{ className: "bg-[var(--moss)] text-white" }}
+                    className="px-3 py-1.5 rounded-full bg-[var(--moss)]/10 text-[var(--moss)] font-semibold text-xs border border-[var(--moss)]/20 hover:bg-[var(--moss)]/20 transition cursor-pointer mr-1"
+                  >
+                    Saldo: {auth.user?.saldoCreditos ?? 0} {auth.user?.saldoCreditos === 1 ? "crédito" : "créditos"}
+                  </Link>
+                )}
                 {isMadrinha && (
-                  <Link to="/areamadrinha" className="px-3 py-2 rounded-full hover:bg-muted">
+                  <Link
+                    to="/areamadrinha"
+                    activeProps={{ className: "bg-[var(--moss)]/10 text-[var(--moss)] font-semibold" }}
+                    className="px-3 py-2 rounded-full hover:bg-muted"
+                  >
                     Área Madrinha
                   </Link>
                 )}
                 
-                <Link
-                  to="/minha-viagem"
-                  className="px-3 py-2 rounded-full hover:bg-muted"
-                >
-                  Minha viagem
-                </Link>
-                <Link to="/busca" className="px-3 py-2 rounded-full hover:bg-muted">
-                  Madrinhas
-                </Link>
+                {!isMadrinha && (
+                  <Link
+                    to="/minha-viagem"
+                    activeProps={{ className: "bg-[var(--moss)]/10 text-[var(--moss)] font-semibold" }}
+                    className="px-3 py-2 rounded-full hover:bg-muted"
+                  >
+                    Minha viagem
+                  </Link>
+                )}
+                {!isMadrinha && (
+                  <Link
+                    to="/busca"
+                    activeProps={{ className: "bg-[var(--moss)]/10 text-[var(--moss)] font-semibold" }}
+                    className="px-3 py-2 rounded-full hover:bg-muted"
+                  >
+                    Destinos
+                  </Link>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -48,11 +70,19 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
               </>
             ) : (
               <>
-                <Link to="/jornada-madrinha" className="px-3 py-2 rounded-full hover:bg-muted">
+                <Link
+                  to="/jornada-madrinha"
+                  activeProps={{ className: "bg-[var(--moss)]/10 text-[var(--moss)] font-semibold" }}
+                  className="px-3 py-2 rounded-full hover:bg-muted"
+                >
                   Seja Madrinha
                 </Link>
 
-                <Link to="/login" className="px-3 py-2 rounded-full hover:bg-muted">
+                <Link
+                  to="/login"
+                  activeProps={{ className: "bg-[var(--moss)]/10 text-[var(--moss)] font-semibold" }}
+                  className="px-3 py-2 rounded-full hover:bg-muted"
+                >
                   Entrar
                 </Link>
               </>
