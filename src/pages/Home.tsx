@@ -8,6 +8,7 @@ import {
   Search,
   Calendar,
   Heart,
+  CreditCard,
 } from "lucide-react";
 import heroImg from "@/assets/hero.jpg";
 import { useNavigate } from "@tanstack/react-router";
@@ -61,15 +62,16 @@ export function Home() {
               <Sparkles size={14} /> Para mulheres que decidiram ir
             </Badge>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl leading-[1.05] font-medium">
-              Viaje sozinha.
+              Viaje solo,
               <br />
-              <span className="italic text-[var(--terracotta)]">Nunca sem alguém</span> que te
-              conhece lá.
+              <span className="italic text-[var(--terracotta)]">nunca sozinha.</span> 
             </h1>
             <p className="text-lg text-muted-foreground max-w-xl">
-              Porto Segura conecta você a uma <strong>Madrinha de Viagem</strong> — uma mulher que
-              mora no seu destino, te acompanha por WhatsApp 24h e conhece o lugar de dentro pra
-              fora.
+               Porto Segura conecta você a um <strong>Time de Madrinhas</strong>, mulheres que
+              moram no seu destino, e estão disponíveis para prestar suporte, companhia e segurança durante toda a sua viagem.
+            </p>
+            <p className="text-md text-muted-foreground max-w-xl">
+              As Madrinhas são avaliadas, verificadas e treinadas para garantir que você tenha uma experiência segura e agradável.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -85,14 +87,6 @@ export function Home() {
                 Seja uma Madrinha <ArrowRight size={18} />
               </button>
             </div>
-            <div className="flex items-center gap-6 pt-2 text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-2">
-                <Shield size={16} className="text-[var(--moss)]" /> Madrinhas verificadas
-              </span>
-              <span className="inline-flex items-center gap-2">
-                <MessageCircle size={16} className="text-[var(--moss)]" /> WhatsApp 24h
-              </span>
-            </div>
           </div>
           <div className="relative">
             <div className="absolute -inset-4 rounded-[2rem] bg-[var(--sand)]/60 -rotate-2" />
@@ -107,11 +101,11 @@ export function Home() {
               <div className="flex items-center gap-3">
                 <div>
                   <p className="text-sm font-semibold leading-tight">Cláudia, 51</p>
-                  <p className="text-xs text-muted-foreground">📍 Lençóis, BA</p>
+                  <p className="text-xs text-muted-foreground">📍 Recife, PE</p>
                 </div>
               </div>
               <p className="text-xs mt-2 italic text-foreground/80">
-                "Te espero na rodoviária com um café."
+                "Te espero no aeroporto e te levo até o hotel com segurança."
               </p>
             </div>
           </div>
@@ -131,18 +125,18 @@ export function Home() {
             {[
               {
                 i: <Search size={26} />,
-                t: "1. Escolha sua Madrinha",
-                d: "Veja perfis, avaliações e preços. Você decide com quem quer viajar.",
+                t: "1. Cadastre seu destino",
+                d: "Informe seu destino e data. Conheça o time de madrinhas que irá te acompanhar durante a viagem",
               },
               {
-                i: <Calendar size={26} />,
-                t: "2. Combine sua viagem",
-                d: "Diga seu destino e suas datas. Pague pelo app, com segurança.",
+                i: <CreditCard size={26} />,
+                t: "2. Compre créditos",
+                d: "Adquira créditos para consumir serviços sob demanda durante a viagem.",
               },
               {
                 i: <Heart size={26} />,
-                t: "3. Viaje acompanhada",
-                d: "Sua madrinha entra em contato em até 24h e fica com você o tempo todo.",
+                t: "3. Autonomia Assistida",
+                d: "Consuma serviços sob demanda: dicas no chat, busca no aeroporto ou acompanhamento presencial.",
               },
             ].map((p, idx) => (
               <div key={idx} className="bg-card border rounded-3xl p-8 hover:shadow-md transition">
@@ -156,6 +150,53 @@ export function Home() {
           </div>
         </div>
       </section>
+
+      {/* Catálogo de Serviços e Créditos */}
+      <section className="py-20 px-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center max-w-3xl mx-auto mb-14">
+            <p className="text-sm uppercase tracking-[0.18em] text-[var(--terracotta)] mb-3">
+              Sistema de Créditos
+            </p>
+            <h2 className="text-3xl sm:text-4xl mb-4">Catálogo de Serviços</h2>
+            <p className="text-lg text-muted-foreground">
+              Garante flexibilidade, autonomia e segurança permitindo o consumo assistido sob demanda. <br/>
+              <span className="font-semibold text-foreground">1 Crédito = R$ 7,00</span>
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              {
+                title: "Dicas Locais / Chat",
+                credits: "2 CR",
+                desc: "Orientações rápidas e curadoria personalizada de pontos turísticos e locais seguros."
+              },
+              {
+                title: "Ligação de Suporte",
+                credits: "3 CR",
+                desc: "Atendimento direto via chat para resolução de dúvidas críticas ou suporte imediato."
+              },
+              {
+                title: "Busca no Aeroporto",
+                credits: "15 CR",
+                desc: "Recepção no desembarque e acompanhamento até ao seu local de hospedagem."
+              },
+              {
+                title: "Acomp. Presencial",
+                credits: "6 CR / hora",
+                desc: "Acompanhamento explorando a cidade e pontos turísticos com segurança total."
+              }
+            ].map((s, idx) => (
+              <div key={idx} className="bg-[var(--sand)]/20 border border-[var(--moss)]/10 rounded-3xl p-6 flex flex-col hover:shadow-md transition">
+                <h3 className="text-lg font-medium mb-1">{s.title}</h3>
+                <p className="text-[var(--terracotta)] font-semibold text-xl mb-3">{s.credits}</p>
+                <p className="text-muted-foreground text-sm flex-1">{s.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="px-6 pb-24">
         <div className="max-w-5xl mx-auto mt-10 bg-[var(--moss)] text-white rounded-3xl p-10 sm:p-14 text-center">
           <h2 className="text-3xl sm:text-4xl mb-4">Onde você sempre quis ir?</h2>
@@ -164,7 +205,7 @@ export function Home() {
           </p>
           <button
             onClick={() => navigate({ to: "/login" })}
-            className="inline-flex items-center gap-2 rounded-full bg-white text-[var(--moss)] px-7 py-4 font-medium hover:bg-white/90"
+            className="inline-flex items-center gap-2 rounded-full bg-white text-[var(--moss)] px-7 py-4 font-medium hover:bg-white/90 transition shadow-md text-lg"
           >
             Encontre sua Madrinha <ArrowRight size={18} />
           </button>
