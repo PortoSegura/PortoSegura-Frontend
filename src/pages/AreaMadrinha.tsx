@@ -10,6 +10,7 @@ import {
   X,
   Sparkles,
   Plus,
+  Home,
   MessageCircle,
   Send,
   Clock,
@@ -120,17 +121,17 @@ const playConnectTone = () => {
   }
 };
 
-type Secao = "cadastro" | "solicitacoes" | "ganhos" | "conversas";
+type Secao = "inicio" | "cadastro" | "ganhos" | "conversas";
 
 const nav: Array<{
   k: Secao;
   label: string;
   icon: ComponentType<{ size?: number; className?: string }>;
 }> = [
-  { k: "cadastro", label: "Cadastro", icon: FileText },
-  { k: "solicitacoes", label: "Solicitações", icon: Inbox },
-  { k: "ganhos", label: "Ganhos", icon: Wallet },
+  { k: "inicio", label: "Início", icon: Home },
   { k: "conversas", label: "Atendimentos", icon: MessageCircle },
+  { k: "ganhos", label: "Ganhos", icon: Wallet },
+  { k: "cadastro", label: "Perfil", icon: Users },
 ];
 
 const COMISSAO = 0.15;
@@ -346,10 +347,11 @@ function normalizarUsuarioCadastro(
   };
 }
 
-export function AreaMadrinha({ secaoInicial = "cadastro" }: { secaoInicial?: Secao }) {
+export function AreaMadrinha({ secaoInicial = "inicio" }: { secaoInicial?: Secao }) {
+  const auth = useAuth();
+  const [chatAbertoExternamente, setChatAbertoExternamente] = useState<number | null>(null);
   const [secao, setSecao] = useState<Secao>(secaoInicial);
   const navigate = useNavigate();
-  const auth = useAuth();
   const [profile, setProfile] = useState<MadrinhaProfileApi | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState("");
@@ -410,7 +412,7 @@ export function AreaMadrinha({ secaoInicial = "cadastro" }: { secaoInicial?: Sec
                 action: {
                   label: "Visualizar",
                   onClick: () => {
-                    setSecao("solicitacoes");
+                    setSecao("inicio");
                   },
                 },
                 duration: 10000,
@@ -578,115 +580,125 @@ export function AreaMadrinha({ secaoInicial = "cadastro" }: { secaoInicial?: Sec
 
   return (
     <SiteShell>
-    <div className="max-w-6xl mx-auto px-6 py-10">
-      {/* <button
-        onClick={() => navigate({ to: "/jornada-madrinha" })}
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"
-      >
-        <ArrowLeft size={16} /> Voltar
-      </button> */}
+    <div className="max-w-6xl mx-auto px-6 py-10 space-y-8">
 
-      <div className="mb-8">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--terracotta)]/20 bg-[var(--terracotta)]/10 text-[var(--terracotta)] px-3 py-1 text-xs font-medium">
-          <Sparkles size={14} /> Área da Madrinha
-        </span>
-        <h1 className="text-3xl sm:text-4xl mt-3">Olá, {perfilUsuario?.nome ?? "Madrinha"}</h1>
-        <p className="text-muted-foreground mt-1">
-          {perfilUsuario?.cidade
-            ? `${perfilUsuario.cidade}${perfilUsuario.estado ? `, ${perfilUsuario.estado}` : ""}`
-            : "Seu perfil salvo"}
-          .
-        </p>
-      </div>
-
-      {/* Painel de Governança e Sustentabilidade */}
-      <div className="bg-card border rounded-3xl p-5 mb-8 grid sm:grid-cols-2 md:grid-cols-4 gap-6 shadow-sm">
-        <div className="space-y-1">
-          <span className="text-[10px] uppercase font-bold text-muted-foreground">Time Local</span>
-          <p className="text-lg font-semibold">{profile?.timeLocalNome ?? "Time Recife"}</p>
-          <p className="text-xs text-muted-foreground">Região Metropolitana</p>
-        </div>
-        <div className="space-y-1">
-          <span className="text-[10px] uppercase font-bold text-muted-foreground">Status da Fila de Alocação</span>
-          <div className="flex items-center gap-1.5">
-            <span className={`w-2.5 h-2.5 rounded-full ${profile?.ativaFilaAlocacao ? "bg-emerald-500" : "bg-[var(--terracotta)]"}`} />
-            <p className="text-sm font-semibold">{profile?.ativaFilaAlocacao ? "Ativa na fila" : "Suspensa por SLA"}</p>
-          </div>
-          {!profile?.ativaFilaAlocacao && (
-            <button
-              onClick={async () => {
-                if (!auth.token) return;
-                await api.put("madrinha/profile/reativar-fila", {}, { headers: { Authorization: `Bearer ${auth.token}` } });
-                const res = await api.get<MadrinhaProfileApi>("madrinha/profile", { headers: { Authorization: `Bearer ${auth.token}` } });
-                setProfile(res.data);
-              }}
-              className="text-[10px] text-[var(--moss)] hover:underline font-semibold cursor-pointer"
-            >
-              Reativar na Fila
-            </button>
-          )}
-        </div>
-        <div className="space-y-1">
-          <span className="text-[10px] uppercase font-bold text-muted-foreground">Disponibilidade</span>
+      {/* Cabeçalho Limpo e Tabs na mesma linha ou logo abaixo */}
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border/40 pb-4">
           <div>
-            <button
-              onClick={async () => {
-                if (!auth.token) return;
-                await api.put("madrinha/profile/disponibilidade", {}, { headers: { Authorization: `Bearer ${auth.token}` } });
-                const res = await api.get<MadrinhaProfileApi>("madrinha/profile", { headers: { Authorization: `Bearer ${auth.token}` } });
-                setProfile(res.data);
-              }}
-              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold border cursor-pointer transition ${
-                profile?.disponivel
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                  : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {profile?.disponivel ? "Disponível" : "Indisponível"}
-            </button>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--terracotta)]/25 bg-[var(--terracotta)]/10 text-[var(--terracotta)] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider font-sans">
+              <Sparkles size={10} /> Área da Madrinha
+            </span>
+            <h1 className="text-3xl mt-3 font-serif font-bold text-foreground">Olá, {perfilUsuario?.nome ?? "Madrinha"}</h1>
           </div>
-          <p className="text-[10px] text-muted-foreground">Alternar pareamentos automáticos</p>
-        </div>
-        <div className="space-y-1">
-          <span className="text-[10px] uppercase font-bold text-muted-foreground">Atendimentos Ativos</span>
-          <p className="text-sm font-semibold">{profile?.cargaAtendimentosAtivos ?? 0} Ativos</p>
-          <p className="text-xs text-muted-foreground">Verifique na aba conversas</p>
+          
+          <div className="flex flex-row overflow-x-auto pb-1 -mb-[17px] gap-6 scrollbar-none w-full md:w-auto shrink-0">
+            {nav.map((n) => {
+              const Icon = n.icon;
+              const ativo = secao === n.k;
+              return (
+                <button
+                  key={n.k}
+                  onClick={() => setSecao(n.k)}
+                  className={`whitespace-nowrap flex items-center gap-2 pb-3 border-b-2 text-sm font-semibold transition cursor-pointer select-none ${
+                    ativo
+                      ? "border-[var(--moss)] text-[var(--moss)]"
+                      : "border-transparent text-muted-foreground hover:text-foreground hover:border-border/60"
+                  }`}
+                >
+                  <Icon size={16} className="shrink-0" />
+                  <span>{n.label}</span>
+                  {n.k === "inicio" && solicitacoesApi.length > 0 && (
+                    <span
+                      className={`font-sans font-bold text-[10px] px-1.5 py-0.5 rounded-full ${
+                        ativo ? "bg-[var(--moss)] text-white" : "bg-red-500 text-white animate-pulse"
+                      }`}
+                    >
+                      {solicitacoesApi.length}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-[220px_1fr] gap-6">
-        <aside className="flex flex-row md:flex-col overflow-x-auto md:overflow-visible gap-2 md:gap-1 p-2 bg-card border rounded-2xl md:sticky md:top-20 self-start scrollbar-none shrink-0">
-          {nav.map((n) => {
-            const Icon = n.icon;
-            const ativo = secao === n.k;
-            return (
-              <button
-                key={n.k}
-                onClick={() => setSecao(n.k)}
-                className={`whitespace-nowrap flex items-center gap-2 md:gap-3 px-4 py-2.5 md:px-3 md:py-3 rounded-xl text-sm transition ${
-                  ativo
-                    ? "bg-[var(--moss)] text-white font-medium shadow-xs"
-                    : "hover:bg-muted text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Icon size={16} className="shrink-0" />
-                <span>{n.label}</span>
-                {n.k === "solicitacoes" && solicitacoesApi.length > 0 && (
-                  <span
-                    className={`font-sans font-bold text-[10px] px-1.5 py-0.5 rounded-full ${
-                      ativo ? "bg-white text-[var(--moss)]" : "bg-red-500 text-white"
+      <div className="w-full min-h-[500px]">
+        {secao === "inicio" && (
+          <div className="space-y-8 animate-in fade-in duration-300">
+            {/* Painel de Governança e Sustentabilidade */}
+            <div className="bg-card border border-border/60 rounded-3xl p-6 grid grid-cols-2 lg:grid-cols-4 gap-6 shadow-xs">
+              <div className="space-y-1.5">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground font-sans block">Time Local</span>
+                <p className="text-base font-bold text-foreground">{profile?.timeLocalNome ?? "Time Recife"}</p>
+                <p className="text-[10px] text-muted-foreground">📍 {perfilUsuario?.cidade ? `${perfilUsuario.cidade}${perfilUsuario.estado ? `, ${perfilUsuario.estado}` : ""}` : "Região Metropolitana"}</p>
+              </div>
+              <div className="space-y-1.5 border-l border-border/40 pl-6 max-sm:border-l-0 max-sm:pl-0">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground font-sans block">Status da Alocação</span>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${profile?.ativaFilaAlocacao ? "bg-emerald-500 animate-pulse" : "bg-[var(--terracotta)]"}`} />
+                  <p className="text-sm font-semibold text-foreground">{profile?.ativaFilaAlocacao ? "Ativa na fila" : "Suspensa por SLA"}</p>
+                </div>
+                {!profile?.ativaFilaAlocacao && (
+                  <button
+                    onClick={async () => {
+                      if (!auth.token) return;
+                      await api.put("madrinha/profile/reativar-fila", {}, { headers: { Authorization: `Bearer ${auth.token}` } });
+                      const res = await api.get<MadrinhaProfileApi>("madrinha/profile", { headers: { Authorization: `Bearer ${auth.token}` } });
+                      setProfile(res.data);
+                    }}
+                    className="text-[10px] text-[var(--moss)] hover:text-[var(--moss)]/80 font-bold hover:underline transition cursor-pointer flex items-center gap-1 mt-1"
+                  >
+                    <RefreshCw size={10} /> Reativar na Fila
+                  </button>
+                )}
+              </div>
+              <div className="space-y-1.5 border-l border-border/40 pl-6 max-lg:border-l-0 max-lg:pl-0 max-sm:border-t max-sm:pt-4">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground font-sans block">Disponibilidade</span>
+                <div>
+                  <button
+                    onClick={async () => {
+                      if (!auth.token) return;
+                      await api.put("madrinha/profile/disponibilidade", {}, { headers: { Authorization: `Bearer ${auth.token}` } });
+                      const res = await api.get<MadrinhaProfileApi>("madrinha/profile", { headers: { Authorization: `Bearer ${auth.token}` } });
+                      setProfile(res.data);
+                    }}
+                    className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold border transition cursor-pointer active:scale-95 ${
+                      profile?.disponivel
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/50"
+                        : "bg-muted text-muted-foreground border-transparent hover:bg-muted/80"
                     }`}
                   >
-                    {solicitacoesApi.length}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </aside>
+                    <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${profile?.disponivel ? "bg-emerald-500" : "bg-muted-foreground/60"}`} />
+                    {profile?.disponivel ? "Disponível" : "Indisponível"}
+                  </button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">Alternar pareamentos automáticos</p>
+              </div>
+              <div className="space-y-1.5 border-l border-border/40 pl-6 max-sm:border-t max-sm:pt-4 max-sm:border-l-0 max-sm:pl-0">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground font-sans block">Atendimentos Ativos</span>
+                <p className="text-base font-bold text-foreground">{profile?.cargaAtendimentosAtivos ?? 0} Ativos</p>
+                <p className="text-[10px] text-muted-foreground">Verifique na aba de atendimentos</p>
+              </div>
+            </div>
 
-        <div>
-          {secao === "cadastro" && (
+            <Solicitacoes
+              demandas={solicitacoesApi}
+              loading={solicitacoesLoading}
+              error={solicitacoesError || profileError}
+              token={auth.token ?? ""}
+              onAtualizar={carregarSolicitacoes}
+              onAceitarSucesso={(id) => {
+                setChatAbertoExternamente(id);
+                setSecao("conversas");
+              }}
+            />
+          </div>
+        )}
+
+        {secao === "cadastro" && (
+          <div className="animate-in fade-in duration-300">
             <Cadastro
               user={perfilUsuario}
               motivacao={profile?.motivacao ?? "—"}
@@ -734,24 +746,25 @@ export function AreaMadrinha({ secaoInicial = "cadastro" }: { secaoInicial?: Sec
                 setProfile(response.data);
               }}
             />
-          )}
-          {secao === "solicitacoes" && (
-            <Solicitacoes
-              demandas={solicitacoesApi}
-              loading={solicitacoesLoading}
-              error={solicitacoesError || profileError}
-              token={auth.token ?? ""}
-              onAtualizar={carregarSolicitacoes}
-              onAceitarSucesso={() => setSecao("conversas")}
-            />
-          )}
-          {secao === "ganhos" && (
+          </div>
+        )}
+
+        {secao === "ganhos" && (
+          <div className="animate-in fade-in duration-300 space-y-8">
             <Ganhos sessoes={sessoesChat} loading={sessoesChatLoading} error={sessoesChatError || profileError} />
-          )}
-          {secao === "conversas" && (
-            <Conversas token={auth.token ?? ""} />
-          )}
-        </div>
+            <HistoricoSolicitacoes sessoes={sessoesChat} loading={sessoesChatLoading} error={sessoesChatError || profileError} />
+          </div>
+        )}
+
+        {secao === "conversas" && (
+          <div className="animate-in fade-in duration-300">
+            <Conversas 
+              token={auth.token ?? ""}
+              chatAbertoExternamente={chatAbertoExternamente}
+              onChatAberto={() => setChatAbertoExternamente(null)}
+            />
+          </div>
+        )}
       </div>
     </div>
 
@@ -935,25 +948,25 @@ function Cadastro({
   const redesSociais = [user?.urlInstagram, user?.urlFacebook, user?.urlLinkedin].filter(Boolean).length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <Card title="Seus dados" icon={FileText}>
         {profileLoading && (
-          <p className="text-sm text-muted-foreground mb-4">Carregando profile da madrinha...</p>
+          <p className="text-xs text-muted-foreground animate-pulse mb-4">Carregando profile da madrinha...</p>
         )}
-        {profileError && <p className="text-sm text-red-600 mb-4">{profileError}</p>}
+        {profileError && <p className="text-xs text-red-600 mb-4">{profileError}</p>}
         
-        <div className="flex flex-col sm:flex-row items-center gap-5 border-b pb-6 mb-6">
-          <div className="w-20 h-20 rounded-full bg-[var(--sand)]/60 overflow-hidden flex items-center justify-center text-[var(--moss)] font-semibold text-2xl border shrink-0">
+        <div className="flex flex-col sm:flex-row items-center gap-6 border-b border-border/40 pb-6 mb-6">
+          <div className="w-20 h-20 rounded-full bg-secondary/30 overflow-hidden flex items-center justify-center text-[var(--moss)] font-serif font-bold text-2xl border border-[var(--moss)]/20 shrink-0 shadow-inner group transition hover:border-[var(--moss)]/40 relative">
             {user?.fotoPerfilUrl ? (
               <img src={user.fotoPerfilUrl} alt={user.nome} className="w-full h-full object-cover" />
             ) : (
               <span>{user?.nome ? user.nome.split(" ").map((n) => n[0]).slice(0, 2).join("") : "M"}</span>
             )}
           </div>
-          <div className="flex flex-col items-center sm:items-start gap-1">
-            <span className="text-sm font-medium">Foto de Perfil</span>
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-1.5">
-              <label className="cursor-pointer bg-[var(--moss)] text-white hover:bg-[var(--moss)]/90 px-4 py-2 rounded-xl text-xs font-semibold shadow-sm inline-block transition disabled:opacity-60">
+          <div className="flex flex-col items-center sm:items-start gap-1.5">
+            <span className="text-xs font-semibold text-foreground">Foto de Perfil</span>
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-1">
+              <label className="cursor-pointer bg-[var(--moss)] text-white hover:opacity-90 px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs inline-block transition disabled:opacity-60 select-none">
                 {fotoLoading ? "Enviando..." : "Alterar foto"}
                 <input
                   type="file"
@@ -968,98 +981,50 @@ function Cadastro({
                   type="button"
                   onClick={handleFotoRemove}
                   disabled={fotoLoading}
-                  className="text-xs font-semibold text-red-600 hover:text-red-700 px-3 py-2 border border-red-200 hover:bg-red-50 rounded-xl transition disabled:opacity-60"
+                  className="text-xs font-bold text-red-600 hover:text-red-700 px-3.5 py-2.5 border border-red-200 hover:bg-red-50/50 rounded-xl transition disabled:opacity-60 cursor-pointer"
                 >
                   Remover foto
                 </button>
               )}
             </div>
             {fotoError && <span className="text-xs text-red-600 mt-1">{fotoError}</span>}
-            <span className="text-xs text-muted-foreground mt-1">Formatos aceitos: JPG, JPEG, PNG ou WEBP. Máx. 5MB.</span>
+            <span className="text-[10px] text-muted-foreground mt-1">Formatos aceitos: JPG, JPEG, PNG ou WEBP. Máx. 5MB.</span>
           </div>
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-4 text-sm">
+        <div className="grid sm:grid-cols-2 gap-5 text-sm">
           <Linha k="Nome" v={user?.nome ?? "—"} />
           <Linha k="E-mail" v={user?.email ?? "—"} />
           <Linha k="WhatsApp" v={user?.telefone ? formatarTelefone(user.telefone) : "—"} />
           <Linha k="Cidade" v={user ? `${user.cidade}, ${user.estado}` : "—"} />
-          <div className="sm:col-span-2">
-            <label className="text-muted-foreground text-sm">Bio</label>
+          <div className="sm:col-span-2 space-y-1.5 mt-2">
+            <label className="text-muted-foreground text-xs font-semibold block">Biografia / Apresentação</label>
             <textarea
               value={bio}
               onChange={(e) => setBio(e.target.value)}
-              placeholder="Fale um pouco sobre você"
-              className="w-full mt-1 border rounded-xl px-3 py-2.5 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-[var(--moss)]"
+              placeholder="Fale um pouco sobre você..."
+              className="w-full border border-border/60 rounded-xl px-4 py-3 bg-background text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-[var(--moss)] focus:border-[var(--moss)] transition placeholder:text-muted-foreground/55"
               rows={4}
             />
           </div>
           <Linha k="Redes sociais" v={redesSociais > 0 ? "Cadastradas" : "Não informadas"} />
-          <Linha k="Comissão plataforma" v="15%" />
+          <Linha k="Comissão Porto Segura" v="15%" />
         </div>
       </Card>
 
       <Card title="Dados de madrinha" icon={Sparkles}>
         <div className="grid sm:grid-cols-2 gap-4 text-sm">
-          <div className="sm:col-span-2">
-            <label className="text-muted-foreground text-sm">Motivação</label>
+          <div className="sm:col-span-2 space-y-1.5">
+            <label className="text-muted-foreground text-xs font-semibold block">Sua Motivação</label>
             <textarea
               value={motivacao}
               readOnly
-              className="w-full mt-1 border rounded-xl px-3 py-2.5 bg-background text-sm leading-relaxed resize-none"
+              className="w-full border border-border/60 rounded-xl px-4 py-3 bg-secondary/5 text-xs leading-relaxed resize-none text-muted-foreground"
               rows={4}
             />
           </div>
         </div>
       </Card>
-
-      {/* <Card title="O que você oferece além do suporte" icon={Sparkles}>
-        <p className="text-sm text-muted-foreground mb-4">
-          Mimos e diferenciais aparecem no seu perfil — é o que te diferencia das outras madrinhas
-          além do preço.
-        </p>
-        <ul className="space-y-2 mb-4">
-          {mimos.map((mimo) => (
-            <li
-              key={mimo.id}
-              className="flex items-center justify-between gap-3 bg-[var(--sand)]/40 rounded-xl px-4 py-2.5 text-sm"
-            >
-              <span className="flex items-center gap-2">
-                <Sparkles size={14} className="text-[var(--terracotta)]" /> {mimo.descricao}
-              </span>
-              <button
-                onClick={() => void onRemoverMimo(mimo.id)}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X size={14} />
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div className="flex gap-2">
-          <input
-            value={novo}
-            onChange={(e) => setNovo(e.target.value)}
-            placeholder="Ex: Café da tarde mineiro no primeiro dia"
-            className="flex-1 border rounded-xl px-3 py-2.5 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-[var(--moss)]"
-          />
-          <button
-            onClick={async () => {
-              const descricao = novo.trim();
-
-              if (!descricao) {
-                return;
-              }
-
-              await onAdicionarMimo(descricao);
-              setNovo("");
-            }}
-            className="inline-flex items-center gap-1.5 bg-[var(--moss)] text-white rounded-xl px-4 py-2.5 text-sm font-medium"
-          >
-            <Plus size={14} /> Adicionar
-          </button>
-        </div>
-      </Card> */}
     </div>
   );
 }
@@ -1077,7 +1042,7 @@ function Solicitacoes({
   error: string;
   token: string;
   onAtualizar: () => Promise<void>;
-  onAceitarSucesso: () => void;
+  onAceitarSucesso: (id: number) => void;
 }) {
   const [demandaSelecionada, setDemandaSelecionada] = useState<any | null>(null);
   const [processando, setProcessando] = useState(false);
@@ -1090,7 +1055,7 @@ function Solicitacoes({
       });
       setDemandaSelecionada(null);
       await onAtualizar();
-      onAceitarSucesso();
+      onAceitarSucesso(id);
     } catch (err: any) {
       const msg = err.response?.data?.mensagem || "Ocorreu um erro ao aceitar esta solicitação.";
       alert(msg);
@@ -1101,11 +1066,11 @@ function Solicitacoes({
 
   return (
     <div className="space-y-6">
-      <Card title={`Fila de Serviços Pendentes (${demandas.length})`} icon={Inbox}>
-        {loading && <p className="text-sm text-muted-foreground">Carregando fila de solicitações...</p>}
-        {error && <p className="text-sm text-red-600">{error}</p>}
+      <Card title={`Solicitações (${demandas.length})`} icon={Inbox}>
+        {loading && <p className="text-xs text-muted-foreground animate-pulse">Carregando fila de solicitações...</p>}
+        {error && <p className="text-xs text-red-600">{error}</p>}
         {!loading && !error && demandas.length === 0 && (
-          <p className="text-sm text-muted-foreground">Nenhum serviço pendente no momento na região.</p>
+          <p className="text-xs text-muted-foreground italic text-center py-8">Nenhum serviço pendente no momento na região.</p>
         )}
         
         <div className="grid gap-6 sm:grid-cols-2">
@@ -1115,85 +1080,77 @@ function Solicitacoes({
               <div
                 key={d.id}
                 onClick={() => setDemandaSelecionada(d)}
-                className="border rounded-3xl p-6 hover:border-[var(--moss)] hover:shadow-lg transition cursor-pointer bg-background flex flex-col justify-between space-y-5"
+                className="border border-border/60 rounded-3xl p-6 hover:border-[var(--moss)]/60 hover:shadow-md transition cursor-pointer bg-background flex flex-col justify-between space-y-5"
               >
                 <div className="flex flex-col gap-4">
                   {/* Informações básicas do usuário */}
                   <div className="flex items-start gap-4">
-                    <div
-                      className="w-12 h-12 rounded-full border bg-cover bg-center shrink-0 shadow-sm"
-                      style={{ backgroundImage: `url(${d.viajanteFotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'})` }}
+                    <img
+                      src={d.viajanteFotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'}
+                      alt={d.viajanteNome}
+                      className="w-12 h-12 rounded-full border border-border/50 object-cover shrink-0 shadow-xs"
                     />
-                    <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex items-center justify-between gap-2">
-                        <h4 className="font-bold text-sm text-foreground truncate">{d.viajanteNome}</h4>
-                        <span className="bg-amber-100/80 text-amber-900 text-[9px] uppercase font-extrabold px-2.5 py-0.5 rounded-full shrink-0 tracking-wider">
+                        <h4 className="font-serif font-bold text-sm text-foreground truncate">{d.viajanteNome}</h4>
+                        <span className="bg-amber-50 text-amber-900 border border-amber-200/40 text-[8px] uppercase font-bold px-2 py-0.5 rounded-full shrink-0 tracking-wider">
                           {d.servicoTipo}
                         </span>
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        Origem: {d.viajanteCidade ? `${d.viajanteCidade}, ${d.viajanteEstado}` : "Não informada"}
+                      <p className="text-[10px] text-muted-foreground">
+                        📍 Origem: {d.viajanteCidade ? `${d.viajanteCidade}, ${d.viajanteEstado}` : "Não informada"}
                       </p>
                     </div>
                   </div>
 
                   {/* Informações de contato e bio do usuário */}
-                  <div className="text-xs border-t pt-3 space-y-1.5 text-foreground/75">
-                    {/* <p className="flex items-center gap-1.5 truncate">
-                      <span className="text-sm">📧</span> <strong>E-mail:</strong> {d.viajanteEmail || "Não informado"}
-                    </p>
-                    <p className="flex items-center gap-1.5">
-                      <span className="text-sm">📞</span> <strong>Telefone:</strong> {d.viajanteTelefone || "Não informado"}
-                    </p> */}
+                  <div className="text-xs border-t border-border/30 pt-3">
                     {d.viajanteBio && (
-                      <p className="mt-2 text-xs italic text-muted-foreground bg-muted/40 p-2.5 rounded-xl border border-dashed truncate max-w-full">
+                      <p className="text-[11px] italic text-muted-foreground bg-muted/30 p-3 rounded-xl border border-dashed border-border/60 line-clamp-3">
                         "{d.viajanteBio}"
                       </p>
                     )}
                   </div>
 
                   {/* Detalhes do Serviço */}
-                  <div className="text-xs space-y-1.5 bg-secondary/35 p-3 rounded-2xl border border-dashed">
-                    {/* <p className="flex items-center gap-1.5 text-foreground/80">
-                      <span className="shrink-0 text-sm">📍</span> <strong>Destino:</strong> {d.viagemDestino || "Recife, PE"}
-                    </p> */}
+                  <div className="text-[11px] space-y-2 bg-secondary/10 p-3 rounded-2xl border border-dashed border-border/50">
                     {d.viagemInicio && d.viagemFim && (
-                      <p className="flex items-center gap-1.5 text-foreground/80">
-                        <span className="shrink-0 text-sm">📅</span> <strong>Período da Viagem:</strong> {new Date(d.viagemInicio).toLocaleDateString("pt-BR")} a {new Date(d.viagemFim).toLocaleDateString("pt-BR")}
+                      <p className="flex items-center gap-2 text-foreground/80">
+                        <Calendar size={12} className="text-muted-foreground/75" />
+                        <span><strong>Período:</strong> {new Date(d.viagemInicio).toLocaleDateString("pt-BR")} a {new Date(d.viagemFim).toLocaleDateString("pt-BR")}</span>
                       </p>
                     )}
                     {d.aeroporto && (
-                      <p className="flex items-center gap-1.5 text-foreground/80">
-                        <span className="shrink-0 text-sm">✈️</span> <strong>Aeroporto:</strong> {d.aeroporto}
+                      <p className="flex items-center gap-2 text-foreground/80">
+                        <span className="text-[12px] text-muted-foreground/75">✈️</span>
+                        <span className="truncate"><strong>Aeroporto:</strong> {d.aeroporto}</span>
                       </p>
                     )}
                     {d.horarioDesembarque && (
-                      <p className="flex items-center gap-1.5 text-foreground/80">
-                        <span className="shrink-0 text-sm">⏱️</span> <strong>Desembarque:</strong> {new Date(d.horarioDesembarque).toLocaleString("pt-BR")}
+                      <p className="flex items-center gap-2 text-foreground/80">
+                        <Clock size={12} className="text-muted-foreground/75" />
+                        <span><strong>Desembarque:</strong> {new Date(d.horarioDesembarque).toLocaleString("pt-BR")}</span>
                       </p>
                     )}
                     {d.locaisVisitados && (
-                      <p className="flex items-start gap-1.5 text-foreground/80">
-                        <span className="shrink-0 text-sm">🗺️</span> <span><strong>Roteiro/Locais:</strong> {d.locaisVisitados}</span>
+                      <p className="flex items-start gap-2 text-foreground/80">
+                        <span className="text-[12px] text-muted-foreground/75">🗺️</span>
+                        <span className="line-clamp-2"><strong>Locais/Roteiro:</strong> {d.locaisVisitados}</span>
                       </p>
                     )}
                     {d.quantidadeHoras && (
-                      <p className="flex items-center gap-1.5 text-foreground/80">
-                        <span className="shrink-0 text-sm">⏱️</span> <strong>Duração Planejada:</strong> {d.quantidadeHoras}h
-                      </p>
-                    )}
-                    {d.acompanhamentoDataInicio && (
-                      <p className="flex items-center gap-1.5 text-foreground/80">
-                        <span className="shrink-0 text-sm">📅</span> <strong>Atendimento:</strong> {new Date(d.acompanhamentoDataInicio).toLocaleDateString("pt-BR")} ({d.acompanhamentoHoraInicio}) a {new Date(d.acompanhamentoDataFim).toLocaleDateString("pt-BR")} ({d.acompanhamentoHoraFim})
+                      <p className="flex items-center gap-2 text-foreground/80">
+                        <Clock size={12} className="text-muted-foreground/75" />
+                        <span><strong>Duração Planejada:</strong> {d.quantidadeHoras}h</span>
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="border-t pt-4 flex items-center justify-between gap-4">
+                <div className="border-t border-border/40 pt-4 flex items-center justify-between gap-4 mt-auto">
                   <div>
-                    <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">Ganho Líquido (85%)</p>
-                    <p className="text-3xl text-emerald-700 font-extrabold tracking-tight">
+                    <p className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">Ganho Líquido (85%)</p>
+                    <p className="text-2xl text-emerald-700 font-extrabold tracking-tight mt-0.5">
                       R$ {ganhoLiquido.toFixed(2)}
                     </p>
                   </div>
@@ -1203,7 +1160,7 @@ function Solicitacoes({
                       void handleAceitar(d.id);
                     }}
                     disabled={processando}
-                    className="bg-[var(--moss)] hover:bg-[var(--moss)]/90 text-white px-5 py-3 rounded-2xl text-xs font-bold shadow-sm transition active:scale-[0.98]"
+                    className="bg-[var(--moss)] hover:opacity-90 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition active:scale-[0.98] cursor-pointer"
                   >
                     Aceitar
                   </button>
@@ -1217,93 +1174,91 @@ function Solicitacoes({
       {/* Detail Modal */}
       {demandaSelecionada && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border rounded-[2.5rem] max-w-lg w-full p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start">
-              <h3 className="text-xl font-serif font-bold">Detalhes da Solicitação</h3>
+          <div className="bg-card border border-border/60 rounded-[2rem] max-w-lg w-full p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-serif font-bold text-foreground">Detalhes da Solicitação</h3>
               <button
                 onClick={() => setDemandaSelecionada(null)}
-                className="text-muted-foreground hover:text-foreground cursor-pointer"
+                className="text-muted-foreground hover:text-foreground cursor-pointer p-1.5 hover:bg-secondary rounded-full transition"
               >
-                <X size={20} />
+                <X size={16} />
               </button>
             </div>
 
             {/* Viajante Profile Info */}
-            <div className="bg-secondary/20 p-5 rounded-3xl space-y-4">
+            <div className="bg-secondary/15 p-5 rounded-3xl space-y-4 border border-border/40">
               <div className="flex items-center gap-4">
-                <div
-                  className="w-16 h-16 rounded-full border bg-cover bg-center shrink-0 shadow-sm"
-                  style={{ backgroundImage: `url(${demandaSelecionada.viajanteFotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'})` }}
+                <img
+                  src={demandaSelecionada.viajanteFotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'}
+                  alt={demandaSelecionada.viajanteNome}
+                  className="w-16 h-16 rounded-full border border-border/50 object-cover shrink-0 shadow-sm"
                 />
                 <div>
-                  <h4 className="font-bold text-foreground">{demandaSelecionada.viajanteNome}</h4>
-                  <p className="text-xs text-muted-foreground">
-                    Origem: {demandaSelecionada.viajanteCidade ? `${demandaSelecionada.viajanteCidade}, ${demandaSelecionada.viajanteEstado}` : "Não informada"}
+                  <h4 className="font-serif font-bold text-base text-foreground">{demandaSelecionada.viajanteNome}</h4>
+                  <p className="text-[10px] text-muted-foreground">
+                    📍 Origem: {demandaSelecionada.viajanteCidade ? `${demandaSelecionada.viajanteCidade}, ${demandaSelecionada.viajanteEstado}` : "Não informada"}
                   </p>
                 </div>
               </div>
 
-              <div className="text-xs text-foreground/80 space-y-2 border-t pt-3">
-                {/* <p>📍 <strong>Destino da Viagem:</strong> {demandaSelecionada.viagemDestino || "Recife, PE"}</p> */}
-                {demandaSelecionada.viagemInicio && demandaSelecionada.viagemFim && (
-                  <p>📅 <strong>Período da Viagem:</strong> {new Date(demandaSelecionada.viagemInicio).toLocaleDateString("pt-BR")} a {new Date(demandaSelecionada.viagemFim).toLocaleDateString("pt-BR")}</p>
-                )}
-                {/* <p><strong>Email:</strong> {demandaSelecionada.viajanteEmail}</p>
-                <p><strong>Telefone:</strong> {demandaSelecionada.viajanteTelefone || "Não informado"}</p> */}
-                {demandaSelecionada.viajanteBio && (
-                  <p className="italic bg-background/50 p-2.5 rounded-xl border border-dashed text-muted-foreground">
+              {demandaSelecionada.viajanteBio && (
+                <div className="text-xs text-foreground/80 space-y-2 border-t border-border/30 pt-3">
+                  <p className="italic bg-background/80 p-3 rounded-xl border border-dashed border-border/50 text-muted-foreground">
                     "{demandaSelecionada.viajanteBio}"
                   </p>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
             {/* Service Details */}
-            <div className="space-y-3 border-t pt-4">
-              <div className="flex justify-between items-center bg-amber-50 border border-amber-100 p-3 rounded-2xl">
+            <div className="space-y-4 border-t border-border/40 pt-4">
+              <div className="flex justify-between items-center bg-amber-50/50 border border-amber-100 p-3 rounded-2xl">
                 <span className="text-xs font-semibold text-amber-900">Serviço Solicitado</span>
-                <span className="bg-amber-100 text-amber-900 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full">
+                <span className="bg-amber-100 text-amber-900 border border-amber-200/40 text-[9px] uppercase font-bold px-2.5 py-0.5 rounded-full">
                   {demandaSelecionada.servicoTipo}
                 </span>
               </div>
 
-              <div className="text-xs space-y-2 px-1">
+              <div className="text-xs space-y-2 px-1 text-foreground/80">
+                {demandaSelecionada.viagemInicio && demandaSelecionada.viagemFim && (
+                  <p className="flex items-center gap-2">📅 <strong>Período da Viagem:</strong> {new Date(demandaSelecionada.viagemInicio).toLocaleDateString("pt-BR")} a {new Date(demandaSelecionada.viagemFim).toLocaleDateString("pt-BR")}</p>
+                )}
                 {demandaSelecionada.aeroporto && (
-                  <p>✈️ <strong>Aeroporto:</strong> {demandaSelecionada.aeroporto}</p>
+                  <p className="flex items-center gap-2">✈️ <strong>Aeroporto:</strong> {demandaSelecionada.aeroporto}</p>
                 )}
                 {demandaSelecionada.horarioDesembarque && (
-                  <p>⏱️ <strong>Desembarque:</strong> {new Date(demandaSelecionada.horarioDesembarque).toLocaleString("pt-BR")}</p>
+                  <p className="flex items-center gap-2">⏱️ <strong>Desembarque:</strong> {new Date(demandaSelecionada.horarioDesembarque).toLocaleString("pt-BR")}</p>
                 )}
                 {demandaSelecionada.locaisVisitados && (
-                  <p>📍 <strong>Locais/Roteiro:</strong> {demandaSelecionada.locaisVisitados}</p>
+                  <p className="flex items-start gap-2">📍 <strong>Locais/Roteiro:</strong> {demandaSelecionada.locaisVisitados}</p>
                 )}
                 {demandaSelecionada.quantidadeHoras && (
-                  <p>⏱️ <strong>Duração Planejada:</strong> {demandaSelecionada.quantidadeHoras} horas</p>
+                  <p className="flex items-center gap-2">⏱️ <strong>Duração Planejada:</strong> {demandaSelecionada.quantidadeHoras} horas</p>
                 )}
                 {demandaSelecionada.acompanhamentoDataInicio && (
-                  <p>📅 <strong>Período do Serviço:</strong> {new Date(demandaSelecionada.acompanhamentoDataInicio).toLocaleDateString("pt-BR")} ({demandaSelecionada.acompanhamentoHoraInicio}) até {new Date(demandaSelecionada.acompanhamentoDataFim).toLocaleDateString("pt-BR")} ({demandaSelecionada.acompanhamentoHoraFim})</p>
+                  <p className="flex items-center gap-2">📅 <strong>Período do Serviço:</strong> {new Date(demandaSelecionada.acompanhamentoDataInicio).toLocaleDateString("pt-BR")} ({demandaSelecionada.acompanhamentoHoraInicio}) até {new Date(demandaSelecionada.acompanhamentoDataFim).toLocaleDateString("pt-BR")} ({demandaSelecionada.acompanhamentoHoraFim})</p>
                 )}
               </div>
 
               <div className="bg-[var(--moss)]/5 border border-[var(--moss)]/10 p-5 rounded-3xl flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] text-muted-foreground uppercase font-semibold">Região do Serviço</p>
-                  <p className="text-sm font-semibold text-foreground">Recife, PE</p>
+                  <p className="text-[10px] text-muted-foreground uppercase font-semibold">Destino do Serviço</p>
+                  <p className="text-xs font-semibold text-foreground mt-0.5">Recife, PE</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] text-[var(--moss)] uppercase font-semibold">Seu Ganho Líquido (85%)</p>
-                  <p className="text-3xl text-emerald-700 font-extrabold">
+                  <p className="text-[9px] text-[var(--moss)] uppercase font-semibold">Seu Ganho Líquido (85%)</p>
+                  <p className="text-2xl text-emerald-700 font-extrabold mt-0.5">
                     R$ {((demandaSelecionada.creditosConsumidos || 0) * 7 * 0.85).toFixed(2)}
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex gap-4 border-t border-border/40 pt-4">
               <button
                 type="button"
                 onClick={() => setDemandaSelecionada(null)}
-                className="w-1/2 border py-3.5 rounded-2xl text-xs font-semibold hover:bg-muted cursor-pointer text-center"
+                className="w-1/2 border border-border/60 py-3 rounded-xl text-xs font-bold hover:bg-muted cursor-pointer text-center transition"
               >
                 Voltar
               </button>
@@ -1311,7 +1266,7 @@ function Solicitacoes({
                 type="button"
                 onClick={() => void handleAceitar(demandaSelecionada.id)}
                 disabled={processando}
-                className="w-1/2 bg-[var(--moss)] text-white py-3.5 rounded-2xl text-xs font-semibold hover:opacity-90 cursor-pointer text-center"
+                className="w-1/2 bg-[var(--moss)] text-white py-3 rounded-xl text-xs font-bold hover:opacity-90 cursor-pointer text-center transition shadow-xs"
               >
                 {processando ? "Aceitando..." : "Aceitar Atendimento"}
               </button>
@@ -1339,14 +1294,10 @@ function Ganhos({
       const liquido = bruto - comissao;
       return {
         id: String(s.id),
-        viajante: s.viajanteNome,
-        servicoTipo: s.servicoTipo,
-        creditos: s.creditosConsumidos || 0,
+        status: s.status === "Finalizada" ? "pago" : "processando",
         bruto,
         comissao,
         liquido,
-        status: s.status === "Finalizada" ? "pago" : "processando",
-        data: s.dataInicio || s.dataCriacao
       };
     });
   }, [sessoes]);
@@ -1366,7 +1317,7 @@ function Ganhos({
 
   return (
     <div className="space-y-6">
-      <div className="grid sm:grid-cols-3 gap-4">
+      <div className="grid sm:grid-cols-3 gap-5">
         <KPI label="Recebido (líquido)" value={`R$ ${totais.pago.toFixed(2)}`} tone="moss" />
         <KPI label="A receber" value={`R$ ${totais.pendente.toFixed(2)}`} tone="terracotta" />
         <KPI label="Comissão Porto Segura (15%)" value={`- R$ ${totais.comissao.toFixed(2)}`} tone="muted" />
@@ -1374,57 +1325,157 @@ function Ganhos({
 
       <Card title="Resumo financeiro" icon={Wallet}>
         {loading && (
-          <p className="text-sm text-muted-foreground mb-4">Carregando dados...</p>
+          <p className="text-xs text-muted-foreground animate-pulse mb-4">Carregando dados...</p>
         )}
-        {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+        {error && <p className="text-xs text-red-600 mb-4">{error}</p>}
         <div className="space-y-1 text-sm">
           <Linha k="Total bruto recebido" v={`R$ ${totais.bruto.toFixed(2)}`} />
           <Linha k="Desconto da plataforma (15%)" v={`- R$ ${totais.comissao.toFixed(2)}`} />
           <Linha k="Total líquido" v={`R$ ${totais.liquido.toFixed(2)}`} />
         </div>
-        <div className="mt-4 bg-[var(--sand)]/40 rounded-xl p-3 text-xs text-muted-foreground">
+        <div className="mt-4 bg-secondary/15 border border-border/40 rounded-xl p-3.5 text-xs text-muted-foreground leading-normal">
           A Porto Segura repassa semanalmente os ganhos de cada serviço prestado. O desconto da plataforma é de <strong>15%</strong>.
         </div>
       </Card>
+    </div>
+  );
+}
 
+function HistoricoSolicitacoes({
+  sessoes,
+  loading,
+  error,
+}: {
+  sessoes: any[];
+  loading: boolean;
+  error: string;
+}) {
+  const ganhosNormalizados = useMemo(() => {
+    return sessoes.map((s) => {
+      const bruto = (s.creditosConsumidos || 0) * 7;
+      const comissao = bruto * 0.15;
+      const liquido = bruto - comissao;
+      return {
+        id: String(s.id),
+        viajante: s.viajanteNome,
+        viajanteFotoPerfilUrl: s.viajanteFotoPerfilUrl,
+        servicoTipo: s.servicoTipo,
+        creditos: s.creditosConsumidos || 0,
+        bruto,
+        comissao,
+        liquido,
+        status: s.status === "Finalizada" ? "pago" : "processando",
+        data: s.dataInicio || s.dataCriacao
+      };
+    });
+  }, [sessoes]);
+
+  return (
+    <div className="space-y-6">
       <Card title="Histórico de serviços prestados" icon={Calendar}>
-        <div className="overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
-          <table className="w-full text-sm min-w-[520px]">
+        {loading && (
+          <p className="text-xs text-muted-foreground animate-pulse mb-4">Carregando histórico...</p>
+        )}
+        {error && <p className="text-xs text-red-600 mb-4">{error}</p>}
+        
+        {/* Mobile View: Cards */}
+        <div className="md:hidden space-y-4">
+          {ganhosNormalizados.map((g) => (
+            <div key={g.id} className="border border-border/50 rounded-2xl p-4 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <img
+                    src={g.viajanteFotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'}
+                    alt={g.viajante}
+                    className="w-10 h-10 rounded-full border border-border/50 object-cover"
+                  />
+                  <div>
+                    <p className="font-semibold text-sm">{g.viajante}</p>
+                    <p className="text-[10px] text-muted-foreground">{g.servicoTipo}</p>
+                  </div>
+                </div>
+                <span
+                  className={`text-[9px] font-bold rounded-full px-2.5 py-1 border uppercase tracking-wider ${
+                    g.status === "pago" 
+                      ? "bg-emerald-50 text-emerald-800 border-emerald-200" 
+                      : "bg-amber-50 text-amber-800 border-amber-200"
+                  }`}
+                >
+                  {g.status === "pago" ? "Concluído" : "Pendente"}
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div className="space-y-1">
+                  <span className="text-muted-foreground block text-[10px] uppercase tracking-wider">Créditos</span>
+                  <span className="font-medium">{g.creditos} cr</span>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-muted-foreground block text-[10px] uppercase tracking-wider">Você recebe</span>
+                  <span className="font-serif text-[var(--terracotta)] font-bold text-sm">R$ {g.liquido.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+          {ganhosNormalizados.length === 0 && !loading && (
+            <p className="text-sm text-muted-foreground text-center py-6">Nenhum serviço prestado ainda.</p>
+          )}
+        </div>
+
+        {/* Desktop View: Table */}
+        <div className="hidden md:block overflow-x-auto scrollbar-none -mx-6 px-6 sm:mx-0 sm:px-0">
+          <table className="w-full text-xs min-w-[600px]">
             <thead>
-              <tr className="text-left text-xs uppercase text-muted-foreground tracking-wider">
-                <th className="py-2 px-2">Viajante</th>
-                <th className="py-2 px-2">Serviço</th>
-                <th className="py-2 px-2">Créditos</th>
-                <th className="py-2 px-2 text-right">Bruto</th>
-                <th className="py-2 px-2 text-right">Comissão</th>
-                <th className="py-2 px-2 text-right">Você recebe</th>
-                <th className="py-2 px-2">Status</th>
+              <tr className="text-left text-[10px] uppercase text-muted-foreground tracking-wider border-b border-border/40 pb-2">
+                <th className="py-3 px-2 font-semibold">Viajante</th>
+                <th className="py-3 px-2 font-semibold">Serviço</th>
+                <th className="py-3 px-2 font-semibold">Créditos</th>
+                <th className="py-3 px-2 font-semibold text-right">Bruto</th>
+                <th className="py-3 px-2 font-semibold text-right">Comissão</th>
+                <th className="py-3 px-2 font-semibold text-right">Você recebe</th>
+                <th className="py-3 px-2 font-semibold text-center">Status</th>
               </tr>
             </thead>
-            <tbody>
-              {ganhosNormalizados.map((g) => {
-                return (
-                  <tr key={g.id} className="border-t">
-                    <td className="py-3 px-2 font-medium">{g.viajante}</td>
-                    <td className="py-3 px-2 text-muted-foreground">{g.servicoTipo}</td>
-                    <td className="py-3 px-2">{g.creditos} cr</td>
-                    <td className="py-3 px-2 text-right">R$ {g.bruto.toFixed(2)}</td>
-                    <td className="py-3 px-2 text-right text-muted-foreground">
-                      - R$ {g.comissao.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-2 text-right font-serif text-[var(--terracotta)] font-semibold">
-                      R$ {g.liquido.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-2">
-                      <span
-                        className={`text-xs rounded-full px-2.5 py-1 ${g.status === "pago" ? "bg-[var(--moss)]/15 text-[var(--moss)]" : "bg-[var(--gold)]/20 text-[var(--gold)]"}`}
-                      >
-                        {g.status === "pago" ? "Concluído" : "Em andamento"}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
+            <tbody className="divide-y divide-border/30">
+              {ganhosNormalizados.map((g) => (
+                <tr key={g.id} className="hover:bg-muted/30 transition">
+                  <td className="py-4 px-2 font-semibold flex items-center gap-2">
+                    <img
+                      src={g.viajanteFotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'}
+                      alt={g.viajante}
+                      className="w-7 h-7 rounded-full border border-border/50 object-cover"
+                    />
+                    <span className="truncate">{g.viajante}</span>
+                  </td>
+                  <td className="py-4 px-2 text-muted-foreground">{g.servicoTipo}</td>
+                  <td className="py-4 px-2 font-medium">{g.creditos} cr</td>
+                  <td className="py-4 px-2 text-right text-muted-foreground">R$ {g.bruto.toFixed(2)}</td>
+                  <td className="py-4 px-2 text-right text-muted-foreground">
+                    - R$ {g.comissao.toFixed(2)}
+                  </td>
+                  <td className="py-4 px-2 text-right font-serif text-[var(--terracotta)] font-bold text-sm">
+                    R$ {g.liquido.toFixed(2)}
+                  </td>
+                  <td className="py-4 px-2 text-center">
+                    <span
+                      className={`text-[9px] font-bold rounded-full px-2.5 py-1 border uppercase tracking-wider ${
+                        g.status === "pago" 
+                          ? "bg-emerald-50 text-emerald-800 border-emerald-200" 
+                          : "bg-amber-50 text-amber-800 border-amber-200"
+                      }`}
+                    >
+                      {g.status === "pago" ? "Concluído" : "Pendente"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {ganhosNormalizados.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={7} className="text-center py-6 text-muted-foreground">
+                    Nenhum serviço prestado ainda.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -1488,9 +1539,18 @@ function KPI({
   );
 }
 
-function Conversas({ token }: { token: string }) {
+function Conversas({ 
+  token,
+  chatAbertoExternamente,
+  onChatAberto
+}: { 
+  token: string;
+  chatAbertoExternamente?: number | null;
+  onChatAberto?: () => void;
+}) {
   const auth = useAuth();
   const [sessoes, setSessoes] = useState<any[]>([]);
+  const [ocultarFinalizados, setOcultarFinalizados] = useState(false);
   const [demandasDisponiveis, setDemandasDisponiveis] = useState<any[]>([]);
   const [sessaoSelecionada, setSessaoSelecionada] = useState<any | null>(null);
   const [mensagens, setMensagens] = useState<any[]>([]);
@@ -1876,116 +1936,83 @@ function Conversas({ token }: { token: string }) {
     }
   };
 
+  const sessoesFiltradas = useMemo(() => {
+    let filtradas = sessoes;
+    if (ocultarFinalizados) {
+      filtradas = filtradas.filter(s => s.status !== "Finalizada");
+    }
+    return filtradas.sort((a, b) => {
+      if (a.status !== "Finalizada" && b.status === "Finalizada") return -1;
+      if (a.status === "Finalizada" && b.status !== "Finalizada") return 1;
+      return 0;
+    });
+  }, [sessoes, ocultarFinalizados]);
+
+  useEffect(() => {
+    if (chatAbertoExternamente && sessoes.length > 0) {
+      const sessao = sessoes.find(s => (s.id || s.Id) === chatAbertoExternamente);
+      if (sessao) {
+        handleSelectSessao(sessao);
+        if (onChatAberto) onChatAberto();
+      }
+    }
+  }, [chatAbertoExternamente, sessoes, handleSelectSessao, onChatAberto]);
+
+  useEffect(() => {
+    if (window.innerWidth < 768 && sessaoSelecionada) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [sessaoSelecionada]);
+
   return (
-    <div className="bg-card border rounded-3xl p-6 sm:p-7 shadow-sm space-y-6">
-      <h2 className="text-xl flex items-center gap-2">
-        <MessageCircle size={20} className="text-[var(--moss)]" /> Central de Atendimento
+    <div className="bg-card border border-border/60 rounded-3xl p-6 space-y-6 shadow-xs">
+      <h2 className="text-lg font-serif font-bold flex items-center gap-2.5 text-foreground">
+        <MessageCircle size={18} className="text-[var(--moss)]" /> Central de Atendimento
       </h2>
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">Carregando sessões...</p>
+        <p className="text-xs text-muted-foreground animate-pulse">Carregando atendimentos...</p>
       ) : sessoes.length === 0 && demandasDisponiveis.length === 0 ? (
-        <div className="text-center py-10 text-sm text-muted-foreground">
+        <div className="text-center py-12 text-xs text-muted-foreground italic bg-secondary/5 rounded-2xl border border-dashed">
           Nenhum chat ou atendimento acionado no momento. Fila do time local vazia.
         </div>
       ) : (
         <div className="grid md:grid-cols-3 gap-6">
           
           {/* List of Sessions */}
-          <div className={`md:col-span-1 border rounded-2xl p-3 space-y-4 h-[450px] overflow-y-auto bg-card/50 ${sessaoSelecionada ? "hidden md:block" : "block"}`}>
-            {/* 1. Demandas do Time
-            <div>
-              <div className="flex items-center justify-between mb-2 px-1">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <Users size={12} className="text-amber-500" /> Fila do Time Local
-                </span>
-                <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                  {demandasDisponiveis.length}
-                </span>
-              </div>
-              
-              {demandasDisponiveis.length === 0 ? (
-                <p className="text-[11px] text-muted-foreground italic px-1 py-2">
-                  Nenhuma demanda pendente na região.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {demandasDisponiveis.map((d) => {
-                    const currentId = d.id || d.Id;
-                    const ganhoLiquido = (d.creditosConsumidos || 0) * 7 * 0.85;
-                    return (
-                      <div
-                        key={currentId}
-                        className="p-3.5 rounded-xl border bg-amber-50/20 border-amber-200/50 flex flex-col gap-3 shadow-xs hover:border-amber-300 transition"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div
-                            className="w-8 h-8 rounded-full border bg-cover bg-center shrink-0"
-                            style={{ backgroundImage: `url(${d.viajanteFotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'})` }}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-xs text-foreground truncate">{d.viajanteNome}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">
-                              Origem: {d.viajanteCidade ? `${d.viajanteCidade}, ${d.viajanteEstado}` : "—"}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="text-[10px] text-muted-foreground leading-tight space-y-1 bg-white/40 p-2 rounded-lg border border-amber-200/20">
-                          <p>📍 Destino: <strong>{d.viagemDestino || "Recife, PE"}</strong></p>
-                          {d.viagemInicio && d.viagemFim && (
-                            <p>📅 Viagem: {new Date(d.viagemInicio).toLocaleDateString("pt-BR")} a {new Date(d.viagemFim).toLocaleDateString("pt-BR")}</p>
-                          )}
-                          <p className="mt-1 font-semibold text-amber-900">
-                            Serviço: <span className="bg-amber-100 text-amber-950 px-1.5 py-0.5 rounded text-[9px] uppercase font-bold">{d.servicoTipo}</span>
-                          </p>
-                          {d.aeroporto && (
-                            <p>✈️ Aeroporto: <strong>{d.aeroporto}</strong></p>
-                          )}
-                          {d.quantidadeHoras && (
-                            <p>⏱️ Horas: <strong>{d.quantidadeHoras}h</strong></p>
-                          )}
-                        </div>
-
-                        <div className="flex items-center justify-between border-t pt-2 mt-1">
-                          <div>
-                            <p className="text-[8px] text-muted-foreground uppercase font-semibold">Ganho Líquido</p>
-                            <p className="font-bold text-xs text-emerald-700">R$ {ganhoLiquido.toFixed(2)}</p>
-                          </div>
-                          <button
-                            onClick={() => void aceitarDemanda(currentId)}
-                            className="bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-semibold px-2.5 py-1.5 rounded-lg transition"
-                          >
-                            Aceitar
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <hr className="border-border/60" /> */}
-
-            {/* 2. Meus Atendimentos */}
-            <div>
-              <div className="flex items-center justify-between mb-2 px-1">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <div className={`md:col-span-1 border border-border/40 rounded-2xl p-3 space-y-4 h-[480px] overflow-y-auto bg-secondary/5 ${sessaoSelecionada ? "hidden md:block" : "block"} scrollbar-none`}>
+            
+            {/* Meus Atendimentos */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between mb-1 px-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 font-sans">
                   <MessageCircle size={12} className="text-[var(--moss)]" /> Meus Atendimentos
                 </span>
-                <span className="bg-[var(--moss)]/10 text-[var(--moss)] text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                  {sessoes.length}
-                </span>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setOcultarFinalizados(!ocultarFinalizados)}
+                    className={`text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full transition border cursor-pointer ${ocultarFinalizados ? "bg-amber-500/10 text-amber-600 border-amber-500/30" : "bg-transparent text-muted-foreground border-transparent hover:bg-muted"}`}
+                  >
+                    Ocultar Finalizados
+                  </button>
+                  <span className="bg-[var(--moss)]/10 text-[var(--moss)] text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">
+                    {sessoesFiltradas.length}
+                  </span>
+                </div>
               </div>
 
-              {sessoes.length === 0 ? (
-                <p className="text-[11px] text-muted-foreground italic px-1 py-2">
-                  Você não possui atendimentos ativos no momento.
+              {sessoesFiltradas.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground italic px-1 py-4">
+                  Você não possui atendimentos para exibir.
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {sessoes.map((s) => {
+                  {sessoesFiltradas.map((s) => {
                     const currentId = s.id || s.Id;
                     const selId = sessaoSelecionada?.id || sessaoSelecionada?.Id;
                     const selected = selId === currentId;
@@ -1997,13 +2024,14 @@ function Conversas({ token }: { token: string }) {
                         onClick={() => handleSelectSessao(s)}
                         className={`w-full text-left p-3 rounded-xl border transition flex items-center gap-3 cursor-pointer ${
                           selected
-                            ? "bg-[var(--moss)] text-white border-transparent shadow-md"
-                            : "bg-background hover:bg-muted border-border"
+                            ? "bg-[var(--moss)] text-white border-transparent shadow-sm"
+                            : "bg-background hover:bg-muted/50 border-border/50"
                         }`}
                       >
-                        <div
-                          className="w-10 h-10 rounded-full border bg-cover bg-center shrink-0 shadow-sm"
-                          style={{ backgroundImage: `url(${s.viajanteFotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'})` }}
+                        <img
+                          src={s.viajanteFotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'}
+                          alt={s.viajanteNome}
+                          className="w-9 h-9 rounded-full border border-border/50 object-cover shrink-0 shadow-xs"
                         />
                         <div className="min-w-0 flex-1 space-y-0.5">
                           <div className="flex items-center justify-between">
@@ -2015,12 +2043,12 @@ function Conversas({ token }: { token: string }) {
                             </span>
                           </div>
                           
-                          <p className={`text-[10px] truncate ${selected ? "text-white/80" : "text-muted-foreground"}`}>
+                          <p className={`text-[10px] truncate font-medium ${selected ? "text-white/80" : "text-muted-foreground"}`}>
                             {s.servicoTipo}
                           </p>
 
                           {hasAlert && (
-                            <span className={`text-[8px] font-bold mt-1 px-1.5 py-0.5 rounded-md inline-flex items-center gap-1 animate-pulse ${
+                            <span className={`text-[8px] font-bold mt-1.5 px-1.5 py-0.5 rounded-md inline-flex items-center gap-1 animate-pulse ${
                               selected ? "bg-red-500 text-white" : "bg-red-50 text-red-600 border border-red-200"
                             }`}>
                               <AlertTriangle size={8} /> SLA Pendente
@@ -2036,33 +2064,44 @@ function Conversas({ token }: { token: string }) {
           </div>
 
           {/* Chat Window */}
-          <div className={`md:col-span-2 border rounded-2xl flex flex-col h-[450px] overflow-hidden bg-secondary/5 ${sessaoSelecionada ? "flex" : "hidden md:flex"}`}>
+          <div className={`md:col-span-2 border border-border/40 rounded-2xl flex flex-col h-[480px] overflow-hidden bg-card ${
+            sessaoSelecionada 
+              ? "fixed inset-0 z-50 bg-background h-full w-full rounded-none border-0 md:relative md:inset-auto md:z-auto md:bg-card md:h-[480px] md:rounded-2xl md:border md:flex" 
+              : "hidden md:flex"
+          }`}>
             {sessaoSelecionada ? (
               <>
                 {/* Chat window header */}
-                <div className="p-3 border-b bg-card flex justify-between items-center text-xs">
-                  <div className="flex items-center gap-2">
+                <div className={`p-4 border-b bg-secondary/15 flex items-center justify-between gap-3 shrink-0 ${
+                  sessaoSelecionada ? "pt-8 md:pt-4" : ""
+                }`}>
+                  <div className="flex items-center gap-3 min-w-0">
                     <button
                       onClick={() => setSessaoSelecionada(null)}
-                      className="md:hidden p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition cursor-pointer"
+                      className="md:hidden mr-1 text-muted-foreground hover:text-foreground cursor-pointer p-1.5 rounded-full hover:bg-secondary transition shrink-0"
                       aria-label="Voltar para a lista de atendimentos"
                     >
-                      <ArrowLeft size={16} />
+                      <ArrowLeft size={20} />
                     </button>
-                    <div>
-                      <span className="font-semibold">{sessaoSelecionada.viajanteNome}</span>
-                      <span className="text-muted-foreground ml-1">({sessaoSelecionada.servicoTipo})</span>
+                    <img
+                      src={sessaoSelecionada.viajanteFotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'}
+                      alt={sessaoSelecionada.viajanteNome || "Viajante"}
+                      className="w-9 h-9 rounded-full border border-[var(--moss)] object-cover shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <p className="font-semibold text-xs truncate block text-foreground">{sessaoSelecionada.viajanteNome}</p>
+                      <p className="text-[10px] text-muted-foreground truncate block">{sessaoSelecionada.servicoTipo}</p>
                     </div>
                   </div>
                   {sessaoSelecionada.status === "Pendente" && !sessaoSelecionada.respondida && (
-                    <span className="text-red-600 font-bold bg-red-50 border border-red-100 px-2 py-0.5 rounded animate-pulse">
-                      Responder Urgente (SLA)
+                    <span className="text-[9px] uppercase tracking-wider font-extrabold bg-red-50 border border-red-200 text-red-600 px-2 py-1 rounded-md animate-pulse">
+                      SLA Pendente
                     </span>
                   )}
                 </div>
 
                 {(sessaoSelecionada.pontoEncontro || sessaoSelecionada.duvidaInicial || sessaoSelecionada.aeroporto) && (
-                  <div className="px-4 py-2 bg-amber-500/10 border-b text-[10px] text-foreground flex flex-wrap gap-x-4 gap-y-1 shrink-0">
+                  <div className="px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/20 text-[10px] text-foreground flex flex-wrap gap-x-4 gap-y-1 shrink-0 leading-normal">
                     {sessaoSelecionada.aeroporto && (
                       <span className="flex items-center gap-1">✈️ <strong>Aeroporto:</strong> {sessaoSelecionada.aeroporto}</span>
                     )}
@@ -2076,33 +2115,33 @@ function Conversas({ token }: { token: string }) {
                 )}
 
                 {/* Messages body */}
-                <div className="flex-1 p-3 overflow-y-auto space-y-2">
+                <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-secondary/5 scrollbar-none">
                   {sessaoSelecionada.servicoTipo.toLowerCase().includes("liga") || sessaoSelecionada.servicoTipo.toLowerCase().includes("suporte") ? (
-                    <div className="p-6 bg-card border rounded-2xl text-center space-y-4 shadow-inner max-w-xs mx-auto my-10">
+                    <div className="p-6 bg-card border border-border/40 rounded-3xl text-center space-y-4 shadow-sm max-w-xs mx-auto my-10 animate-in fade-in zoom-in-95 duration-200">
                       {sessaoSelecionada.status === "Finalizada" ? (
                         <>
-                          <div className="w-16 h-16 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center mx-auto">
-                            <Phone size={28} className="stroke-[2]" />
+                          <div className="w-16 h-16 rounded-full bg-muted text-muted-foreground/60 flex items-center justify-center mx-auto border border-border/40">
+                            <Phone size={28} className="stroke-[1.5]" />
                           </div>
                           <div className="space-y-1">
-                            <p className="font-semibold text-gray-500 text-sm">Chamada de Voz Finalizada</p>
+                            <p className="font-serif font-bold text-sm text-foreground">Chamada por Voz Encerrada</p>
                             <p className="text-[10px] text-muted-foreground">Esta ligação foi finalizada.</p>
                           </div>
                         </>
                       ) : (
                         <>
-                          <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto animate-pulse">
-                            <PhoneCall size={28} className="stroke-[2] animate-bounce" />
+                          <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto animate-pulse border border-emerald-200">
+                            <PhoneCall size={28} className="stroke-[1.5] animate-bounce" />
                           </div>
                           <div className="space-y-1">
-                            <p className="font-semibold text-emerald-600 text-sm">Suporte de Voz Ativo!</p>
+                            <p className="font-serif font-bold text-emerald-600 text-sm">Suporte de Voz Ativo!</p>
                             <p className="text-xs">Viajante: <strong>{sessaoSelecionada.viajanteNome}</strong></p>
-                            <p className="text-[10px] text-muted-foreground mt-2">Você está conversando por voz diretamente.</p>
+                            <p className="text-[10px] text-muted-foreground mt-2">Você está conversando por voz com a viajante.</p>
                             <canvas
                               ref={canvasRef}
                               width={200}
                               height={60}
-                              className="w-full h-[60px] rounded-lg mt-3 bg-secondary/10 border border-secondary/20"
+                              className="w-full h-[60px] rounded-lg mt-3 bg-secondary/15 border border-secondary/20"
                             />
                           </div>
                           <button
@@ -2126,7 +2165,7 @@ function Conversas({ token }: { token: string }) {
                     </div>
                   ) : (
                     loadingMsg && mensagens.length === 0 ? (
-                      <p className="text-center text-xs text-muted-foreground">Carregando...</p>
+                      <p className="text-center text-xs text-muted-foreground animate-pulse py-8">Carregando conversa...</p>
                     ) : (
                       mensagens.map((msg) => {
                         const isSystem = msg.remetenteId === 0;
@@ -2135,7 +2174,7 @@ function Conversas({ token }: { token: string }) {
 
                         if (isSystem) {
                           return (
-                            <div key={msg.id} className="text-center py-1.5 px-3 rounded-lg bg-secondary text-[10px] text-muted-foreground max-w-[85%] mx-auto">
+                            <div key={msg.id} className="text-center py-1.5 px-3 rounded-lg bg-secondary/40 text-[10px] text-muted-foreground max-w-[85%] mx-auto leading-normal">
                               {msg.texto}
                             </div>
                           );
@@ -2149,10 +2188,10 @@ function Conversas({ token }: { token: string }) {
                             <span className="text-[9px] text-muted-foreground mb-0.5">
                               {isMeSender ? "Você" : sessaoSelecionada.viajanteNome}
                             </span>
-                            <div className={`p-2.5 rounded-2xl text-xs ${
+                            <div className={`p-3 rounded-2xl text-xs leading-normal shadow-xs ${
                               isMeSender
                                 ? "bg-[var(--moss)] text-white rounded-tr-none"
-                                : "bg-card border text-foreground rounded-tl-none"
+                                : "bg-card border border-border/40 text-foreground rounded-tl-none"
                             }`}>
                               {msg.texto}
                             </div>
@@ -2165,27 +2204,28 @@ function Conversas({ token }: { token: string }) {
 
                 {/* Input form */}
                 {!(sessaoSelecionada.servicoTipo.toLowerCase().includes("liga") || sessaoSelecionada.servicoTipo.toLowerCase().includes("suporte")) && (
-                  <form onSubmit={enviarMensagem} className="p-2 border-t bg-card flex gap-2">
+                  <form onSubmit={enviarMensagem} className="p-3 border-t border-border/40 bg-card flex gap-2 shrink-0">
                     <input
                       value={texto}
                       onChange={(e) => setTexto(e.target.value)}
-                      placeholder={sessaoSelecionada.status === "Finalizada" ? "Conversa encerrada" : "Digite sua resposta..."}
+                      placeholder={sessaoSelecionada.status === "Finalizada" ? "Atendimento finalizado" : "Escreva sua mensagem..."}
                       disabled={sessaoSelecionada.status === "Finalizada"}
-                      className="flex-1 bg-secondary border rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--moss)] disabled:opacity-60"
+                      className="flex-1 bg-secondary border border-border/50 rounded-xl px-4 py-3 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--moss)] placeholder:text-muted-foreground/60 disabled:opacity-60"
                     />
                     <button
                       type="submit"
                       disabled={!texto.trim() || enviando || sessaoSelecionada.status === "Finalizada"}
-                      className="bg-[var(--moss)] text-white px-3 py-2 rounded-xl text-xs font-semibold hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
+                      className="bg-[var(--moss)] text-white p-3 rounded-xl hover:opacity-90 transition disabled:opacity-50 cursor-pointer shrink-0"
                     >
-                      Enviar
+                      <Send size={14} />
                     </button>
                   </form>
                 )}
               </>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-xs">
-                Selecione uma conversa ao lado para responder.
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-xs p-6 text-center space-y-2">
+                <span className="text-xl">💬</span>
+                <p>Selecione um atendimento ativo para responder.</p>
               </div>
             )}
           </div>

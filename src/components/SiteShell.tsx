@@ -101,6 +101,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
 
           {/* Mobile Navigation */}
           <div className="flex md:hidden items-center gap-3">
+            <div id="mobile-chat-portal" />
             {auth.isAuthenticated && !isMadrinha && (
               <Link
                 to="/carteira"
@@ -156,6 +157,23 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
                           >
                             Minha viagem
                           </Link>
+                        </SheetClose>
+                      )}
+                      {!isMadrinha && (
+                        <SheetClose asChild>
+                          <button
+                            onClick={() => {
+                              navigate({ to: "/minha-viagem" }).then(() => {
+                                setTimeout(() => {
+                                  const btn = document.getElementById("mobile-chat-portal")?.firstChild as HTMLButtonElement;
+                                  if (btn) btn.click();
+                                }, 50);
+                              });
+                            }}
+                            className="px-4 py-3 rounded-xl hover:bg-muted text-sm transition text-left cursor-pointer"
+                          >
+                            Minhas Conversas
+                          </button>
                         </SheetClose>
                       )}
                       {!isMadrinha && (

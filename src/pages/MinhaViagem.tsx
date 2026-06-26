@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { ArrowLeft, ArrowRight, CheckCircle2, MapPin, Search, MessageCircle, Shield, AlertCircle, RefreshCw, Send, Clock, Phone, Navigation, Heart, Calendar, Star, Wallet } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, MapPin, Search, MessageCircle, Shield, AlertCircle, RefreshCw, Send, Clock, Phone, Navigation, Heart, Calendar, Star, Wallet, Archive } from "lucide-react";
 import { useNavigate, Link } from "@tanstack/react-router";
+import { createPortal } from "react-dom";
 import { SiteShell } from "@/components/SiteShell";
 import { useRequireAuth } from "@/context/auth-context";
 import { api } from "@/lib/api";
@@ -143,6 +144,20 @@ export function MinhaViagem() {
   const [sessaoSelecionada, setSessaoSelecionada] = useState<SessaoChat | null>(null);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [madrinhasTime, setMadrinhasTime] = useState<any[]>([]);
+  const [mobileChatListOpen, setMobileChatListOpen] = useState(false);
+  const [ocultarFinalizadosViajante, setOcultarFinalizadosViajante] = useState(false);
+  const mobilePortalContainer = typeof document !== 'undefined' ? document.getElementById("mobile-chat-portal") : null;
+
+  useEffect(() => {
+    if (window.innerWidth < 1024 && (mobileChatListOpen || sessaoSelecionada)) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileChatListOpen, sessaoSelecionada]);
 
   const sessaoSelecionadaRef = useRef<SessaoChat | null>(null);
   useEffect(() => {
@@ -655,7 +670,22 @@ export function MinhaViagem() {
 
   return (
     <SiteShell>
-      <div className="max-w-7xl mx-auto px-6 py-10 space-y-8">
+      {mobilePortalContainer && createPortal(
+        <button 
+          onClick={() => {
+            setSessaoSelecionada(null);
+            setMobileChatListOpen(!mobileChatListOpen);
+          }}
+          className="relative p-2 text-foreground hover:bg-muted rounded-xl transition cursor-pointer flex items-center justify-center"
+        >
+          <MessageCircle size={20} />
+          {sessoesChat.length > 0 && (
+            <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-[var(--terracotta)] rounded-full border border-background"></span>
+          )}
+        </button>,
+        mobilePortalContainer
+      )}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-8">
         
         {/* Header */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -667,7 +697,7 @@ export function MinhaViagem() {
             onClick={() => navigate({ to: "/busca" })}
             className="inline-flex items-center gap-2 rounded-full border px-5 py-3 text-sm font-medium hover:bg-muted cursor-pointer transition shadow-sm bg-card"
           >
-            <Search size={16} /> Adquirir Créditos / Novo Destino
+            <Search size={16} /> Novo Destino
           </button>
         </div>
 
@@ -731,29 +761,30 @@ export function MinhaViagem() {
               </div>
             </div>
 
-            {/* Wallet Section (No history, no BRL equivalence, just credit count + button) */}
-            <div className="bg-card border rounded-[2rem] p-6 sm:p-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="flex items-center gap-5">
-                <div className="w-12 h-12 rounded-2xl bg-[var(--moss)]/10 text-[var(--moss)] flex items-center justify-center shrink-0">
-                  <Wallet size={24} />
+            {/* Wallet Section */}
+            <div className="bg-card border rounded-3xl md:rounded-[2rem] p-4 md:p-8 shadow-sm flex flex-row md:flex-row items-center justify-between gap-3 md:gap-6">
+              <div className="flex items-center gap-3 md:gap-5 min-w-0">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-[var(--moss)]/10 text-[var(--moss)] flex items-center justify-center shrink-0">
+                  <Wallet className="w-5 h-5 md:w-6 md:h-6" />
                 </div>
-                <div>
-                  <h3 className="text-lg font-serif font-semibold">Seus Créditos de Viagem</h3>
-                  <p className="text-xs text-muted-foreground font-medium">Utilizados para contratar serviços do time local.</p>
+                <div className="min-w-0">
+                  <h3 className="text-sm md:text-lg font-serif font-semibold truncate">Seus Créditos</h3>
+                  <p className="hidden md:block text-[10px] md:text-xs text-muted-foreground font-medium truncate">Utilizados para contratar serviços do time local.</p>
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto shrink-0">
-                <div className="bg-secondary/40 border rounded-2xl px-5 py-3 flex items-baseline gap-1 shrink-0 justify-center">
-                  <span className="text-3xl font-serif font-bold text-[var(--moss)]">
+              <div className="flex flex-row items-center gap-3 md:gap-4 shrink-0">
+                <div className="bg-secondary/40 border rounded-xl md:rounded-2xl px-3 py-1.5 md:px-5 md:py-3 flex items-baseline gap-1 shrink-0 justify-center">
+                  <span className="text-xl md:text-3xl font-serif font-bold text-[var(--moss)]">
                     {auth.user?.saldoCreditos ?? 0}
                   </span>
-                  <span className="text-xs text-muted-foreground font-semibold">créditos</span>
+                  <span className="text-[10px] md:text-xs text-muted-foreground font-semibold">créditos</span>
                 </div>
                 <button
                   onClick={() => navigate({ to: "/carteira" })}
-                  className="w-full sm:w-auto bg-[var(--moss)] text-white hover:opacity-90 px-6 py-3.5 rounded-2xl font-medium transition cursor-pointer text-sm shadow-sm text-center"
+                  className="bg-[var(--moss)] text-white hover:opacity-90 px-3 py-2 md:px-6 md:py-3.5 rounded-xl md:rounded-2xl font-medium transition cursor-pointer text-xs md:text-sm shadow-sm flex items-center justify-center"
                 >
-                  Adquirir Créditos / Recarregar
+                  <span className="md:hidden">Recarregar</span>
+                  <span className="hidden md:inline">Adquirir Créditos / Recarregar</span>
                 </button>
               </div>
             </div>
@@ -805,58 +836,119 @@ export function MinhaViagem() {
               </div>
 
               {/* Right Column (1/3 width): Support Chat */}
-              <div className={`lg:col-span-1 ${sessaoSelecionada ? "fixed inset-0 z-50 bg-background lg:relative lg:inset-auto lg:z-auto lg:bg-transparent" : ""}`}>
+              <div className={`lg:col-span-1 ${mobileChatListOpen || sessaoSelecionada ? "fixed inset-0 z-50 bg-background lg:relative lg:inset-auto lg:z-auto lg:bg-transparent" : "hidden lg:block"}`}>
                 <div className={`bg-card border rounded-[2rem] shadow-sm h-[560px] overflow-hidden relative flex bg-secondary/5 flex-col w-full ${
-                  sessaoSelecionada ? "h-full rounded-none border-0 lg:h-[560px] lg:rounded-[2rem] lg:border" : ""
+                  mobileChatListOpen || sessaoSelecionada ? "h-full rounded-none border-0 lg:h-[560px] lg:rounded-[2rem] lg:border" : ""
                 }`}>
                   {/* SCREEN 1: Lista de Conversas (Full Width) */}
                   <div className={`w-full h-full flex flex-col absolute inset-0 transition-all duration-300 ${
                 sessaoSelecionada ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100"
               }`}>
-                <div className="p-4 border-b bg-card">
+                <div className="p-4 border-b bg-card flex justify-between items-center">
                   <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Minhas Conversas</h4>
+                  <button onClick={() => setMobileChatListOpen(false)} className="lg:hidden p-1.5 hover:bg-muted rounded-full cursor-pointer text-muted-foreground">
+                    <ArrowLeft size={16} />
+                  </button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                <div className="flex-1 overflow-y-auto p-4 space-y-6">
                   {sessoesChat.length === 0 ? (
                     <div className="text-center py-16 text-sm text-muted-foreground italic">
                       Nenhuma conversa ou serviço iniciado no momento.
                     </div>
                   ) : (
-                    <div className="flex flex-col gap-2">
-                      {sessoesChat.map((s) => {
-                        const hasMadrinha = !!s.madrinhaId;
-                        return (
-                          <button
-                            key={s.id}
-                            onClick={() => handleSelectSessao(s)}
-                            className="w-full text-left p-4 rounded-2xl border bg-background hover:bg-muted border-border transition flex items-center gap-4 cursor-pointer shadow-xs"
-                          >
-                            <div className="w-10 h-10 rounded-full shrink-0 flex items-center justify-center font-bold text-xs uppercase bg-[var(--moss)]/10 text-[var(--moss)]">
-                              {s.servicoTipo.substring(0, 2)}
+                    <>
+                      {/* Ativos */}
+                      {sessoesChat.filter(s => s.status !== "Finalizada" && s.status !== "Cancelada").length > 0 && (
+                        <div className="space-y-3">
+                          <h5 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 font-sans">
+                            <MessageCircle size={12} className="text-[var(--moss)]" /> Atendimentos Ativos
+                          </h5>
+                          <div className="flex flex-col gap-2">
+                            {sessoesChat.filter(s => s.status !== "Finalizada" && s.status !== "Cancelada").map((s) => {
+                              const hasMadrinha = !!s.madrinhaId;
+                              return (
+                                <button
+                                  key={s.id}
+                                  onClick={() => handleSelectSessao(s)}
+                                  className="w-full text-left p-4 rounded-2xl border bg-background hover:bg-muted border-border transition flex items-center gap-4 cursor-pointer shadow-xs"
+                                >
+                                  <div className="w-10 h-10 rounded-full shrink-0 flex items-center justify-center font-bold text-xs uppercase bg-[var(--moss)]/10 text-[var(--moss)]">
+                                    {s.servicoTipo.substring(0, 2)}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between items-start gap-1">
+                                      <p className="font-semibold text-xs truncate">
+                                        {s.servicoTipo}
+                                      </p>
+                                      <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase shrink-0 ${
+                                        s.status === "Pendente"
+                                          ? "bg-amber-100 text-amber-800 animate-pulse"
+                                          : s.status === "Ativa"
+                                            ? "bg-emerald-100 text-emerald-800"
+                                            : "bg-gray-100 text-gray-800"
+                                      }`}>
+                                        {s.status}
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] truncate mt-0.5 text-muted-foreground">
+                                      {hasMadrinha ? s.madrinhaNome : "Aguardando time..."}
+                                    </p>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Finalizados */}
+                      {sessoesChat.filter(s => s.status === "Finalizada" || s.status === "Cancelada").length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h5 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 font-sans">
+                              <Archive size={12} className="text-muted-foreground" /> Finalizados
+                            </h5>
+                            <button
+                              onClick={() => setOcultarFinalizadosViajante(!ocultarFinalizadosViajante)}
+                              className={`text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full transition border cursor-pointer ${ocultarFinalizadosViajante ? "bg-amber-500/10 text-amber-600 border-amber-500/30" : "bg-transparent text-muted-foreground border-transparent hover:bg-muted"}`}
+                            >
+                              Ocultar Finalizados
+                            </button>
+                          </div>
+                          {!ocultarFinalizadosViajante && (
+                            <div className="flex flex-col gap-2">
+                              {sessoesChat.filter(s => s.status === "Finalizada" || s.status === "Cancelada").map((s) => {
+                                const hasMadrinha = !!s.madrinhaId;
+                                return (
+                                  <button
+                                    key={s.id}
+                                    onClick={() => handleSelectSessao(s)}
+                                    className="w-full text-left p-4 rounded-2xl border bg-background hover:bg-muted border-border transition flex items-center gap-4 cursor-pointer shadow-xs opacity-70"
+                                  >
+                                    <div className="w-10 h-10 rounded-full shrink-0 flex items-center justify-center font-bold text-xs uppercase bg-[var(--moss)]/10 text-[var(--moss)]">
+                                      {s.servicoTipo.substring(0, 2)}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex justify-between items-start gap-1">
+                                        <p className="font-semibold text-xs truncate">
+                                          {s.servicoTipo}
+                                        </p>
+                                        <span className="text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase shrink-0 bg-gray-100 text-gray-800">
+                                          {s.status}
+                                        </span>
+                                      </div>
+                                      <p className="text-[10px] truncate mt-0.5 text-muted-foreground">
+                                        {hasMadrinha ? s.madrinhaNome : "Atendimento finalizado"}
+                                      </p>
+                                    </div>
+                                  </button>
+                                );
+                              })}
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex justify-between items-start gap-1">
-                                <p className="font-semibold text-xs truncate">
-                                  {s.servicoTipo}
-                                </p>
-                                <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase shrink-0 ${
-                                  s.status === "Pendente"
-                                    ? "bg-amber-100 text-amber-800 animate-pulse"
-                                    : s.status === "Ativa"
-                                      ? "bg-emerald-100 text-emerald-800"
-                                      : "bg-gray-100 text-gray-800"
-                                }`}>
-                                  {s.status}
-                                </span>
-                              </div>
-                              <p className="text-[10px] truncate mt-0.5 text-muted-foreground">
-                                {hasMadrinha ? s.madrinhaNome : "Aguardando time..."}
-                              </p>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
