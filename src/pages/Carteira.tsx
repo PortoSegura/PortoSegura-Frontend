@@ -186,6 +186,44 @@ export function Carteira() {
     return null;
   }
 
+  const historicoSection = (
+    <div className="bg-card border rounded-[2rem] p-6 sm:p-8 shadow-sm space-y-4">
+      <h3 className="text-lg font-serif font-semibold">Histórico de Transações</h3>
+      
+      {loadingHistory ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground py-4">
+          <RefreshCw className="animate-spin" size={14} /> Carregando transações...
+        </div>
+      ) : historicoTransacoes.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic py-2">Nenhuma transação registrada nesta carteira.</p>
+      ) : (
+        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+          {historicoTransacoes.map((t) => (
+            <div key={t.id} className="border-b pb-3 last:border-b-0 last:pb-0 flex items-center justify-between gap-3 text-xs">
+              <div className="space-y-0.5">
+                <p className="font-semibold text-foreground">{t.descricao}</p>
+                <div className="flex items-center gap-1.5 text-muted-foreground text-[10px]">
+                  <Calendar size={10} />
+                  <span>{new Date(t.dataCriacao).toLocaleDateString("pt-BR")}</span>
+                  <span>•</span>
+                  <span>{t.tipo}</span>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <span className={`font-bold ${t.quantidade > 0 ? "text-emerald-600" : "text-amber-700"}`}>
+                  {t.quantidade > 0 ? `+${t.quantidade}` : t.quantidade} cr
+                </span>
+                {t.precoPago && t.precoPago > 0 ? (
+                  <p className="text-[10px] text-muted-foreground">R$ {t.precoPago.toFixed(2)}</p>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <SiteShell>
       <div className="max-w-7xl mx-auto px-6 py-10 space-y-8">
@@ -243,41 +281,9 @@ export function Carteira() {
               </div>
             </div>
 
-            {/* History Section */}
-            <div className="bg-card border rounded-[2rem] p-6 sm:p-8 shadow-sm space-y-4">
-              <h3 className="text-lg font-serif font-semibold">Histórico de Transações</h3>
-              
-              {loadingHistory ? (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground py-4">
-                  <RefreshCw className="animate-spin" size={14} /> Carregando transações...
-                </div>
-              ) : historicoTransacoes.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic py-2">Nenhuma transação registrada nesta carteira.</p>
-              ) : (
-                <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
-                  {historicoTransacoes.map((t) => (
-                    <div key={t.id} className="border-b pb-3 last:border-b-0 last:pb-0 flex items-center justify-between gap-3 text-xs">
-                      <div className="space-y-0.5">
-                        <p className="font-semibold text-foreground">{t.descricao}</p>
-                        <div className="flex items-center gap-1.5 text-muted-foreground text-[10px]">
-                          <Calendar size={10} />
-                          <span>{new Date(t.dataCriacao).toLocaleDateString("pt-BR")}</span>
-                          <span>•</span>
-                          <span>{t.tipo}</span>
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <span className={`font-bold ${t.quantidade > 0 ? "text-emerald-600" : "text-amber-700"}`}>
-                          {t.quantidade > 0 ? `+${t.quantidade}` : t.quantidade} cr
-                        </span>
-                        {t.precoPago && t.precoPago > 0 ? (
-                          <p className="text-[10px] text-muted-foreground">R$ {t.precoPago.toFixed(2)}</p>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+            {/* History Section (Desktop only) */}
+            <div className="hidden lg:block">
+              {historicoSection}
             </div>
 
           </div>
@@ -405,6 +411,11 @@ export function Carteira() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* History Section (Mobile only) */}
+            <div className="lg:hidden mt-6">
+              {historicoSection}
             </div>
 
           </div>

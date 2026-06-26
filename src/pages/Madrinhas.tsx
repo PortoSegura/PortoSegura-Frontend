@@ -230,19 +230,19 @@ export function Madrinhas() {
             <div className="bg-gradient-to-br from-[var(--sand)]/40 to-transparent border rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6">
               <div className="space-y-2 text-center sm:text-left">
                 <h3 className="font-serif font-semibold text-lg flex items-center justify-center sm:justify-start gap-2">
-                  <Shield size={18} className="text-[var(--moss)]" /> Nossa Garantia de Segurança
+                  <Shield size={18} className="text-[var(--moss)]" /> Segurança é o nosso compromisso inegociável.
                 </h3>
                 <p className="text-xs text-muted-foreground max-w-xl">
-                  Todas as especialistas passam por checagem documental rigorosa e Liveness Check (Biometria Facial). Monitoramos SLAs e as conexões do time local em tempo real.
+                  Todas as nossas especialistas passam por um processo de onboarding criterioso, que inclui análise de perfil aprofundada e verificação de identidade via videos e entrevistas.
                 </p>
               </div>
               <div className="flex gap-4 text-xs font-semibold text-foreground/80 shrink-0">
                 <span className="inline-flex items-center gap-1.5 bg-white border px-3 py-1.5 rounded-full shadow-xs">
-                  ✓ Liveness Check
+                  ✓ Verificação de Identidade
                 </span>
-                <span className="inline-flex items-center gap-1.5 bg-white border px-3 py-1.5 rounded-full shadow-xs">
+                {/* <span className="inline-flex items-center gap-1.5 bg-white border px-3 py-1.5 rounded-full shadow-xs">
                   ✓ SLA de 15m
-                </span>
+                </span> */}
               </div>
             </div>
 

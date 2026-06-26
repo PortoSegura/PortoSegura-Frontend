@@ -12,6 +12,7 @@ const OBTER_MADRINHA_POR_ID_ENDPOINT = "madrinha";
 type MadrinhaDetalheApi = {
   id: number;
   precoDiaria: number;
+  bio: string;
   fotoPerfilUrl?: string | null;
   motivacao: string;
   usuarioId: number;
@@ -115,6 +116,8 @@ export function DetalhesMadrinha({
 
   const servicos = useMemo(() => madrinha?.servicos ?? [], [madrinha?.servicos]);
 
+  console.log("Madrinha:", madrinha);
+
   const diasPreSel = useMemo(() => {
     if (!initialIda || !initialVolta) return 0;
     const ms = new Date(initialVolta).getTime() - new Date(initialIda).getTime();
@@ -177,9 +180,9 @@ export function DetalhesMadrinha({
                 <p className="mt-2 inline-flex items-center gap-1.5 text-[var(--moss)] font-medium">
                   <MapPin size={16} /> Moradora de {madrinha.cidade}, {madrinha.estado}
                 </p>
-                <div className="flex items-center gap-3 mt-3 text-sm text-muted-foreground">
+                {/* <div className="flex items-center gap-3 mt-3 text-sm text-muted-foreground">
                   <Calendar size={16} /> {formatarQtdSolicitacoes(madrinha.qtdSolicitacoes)}
-                </div>
+                </div> */}
               </div>
 
               {/* <div className="text-right sm:border-l sm:pl-6 space-y-0.5">
@@ -201,7 +204,7 @@ export function DetalhesMadrinha({
             <div className="grid md:grid-cols-2 gap-10 mt-10">
               <div>
                 <h2 className="text-xl mb-3">Sobre {madrinha.nome.split(" ")[0]}</h2>
-                <p className="text-foreground/85 leading-relaxed mb-5">{madrinha.motivacao}</p>
+                <p className="text-foreground/85 leading-relaxed mb-5">{madrinha.bio}</p>
 
                 {/* <h3 className="text-base font-semibold mb-2">o que oferece além do suporte:</h3>
                 <ul className="space-y-1.5">

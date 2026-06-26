@@ -130,7 +130,7 @@ const nav: Array<{
   { k: "cadastro", label: "Cadastro", icon: FileText },
   { k: "solicitacoes", label: "Solicitações", icon: Inbox },
   { k: "ganhos", label: "Ganhos", icon: Wallet },
-  { k: "conversas", label: "Conversas", icon: MessageCircle },
+  { k: "conversas", label: "Atendimentos", icon: MessageCircle },
 ];
 
 const COMISSAO = 0.15;
@@ -648,14 +648,14 @@ export function AreaMadrinha({ secaoInicial = "cadastro" }: { secaoInicial?: Sec
           <p className="text-[10px] text-muted-foreground">Alternar pareamentos automáticos</p>
         </div>
         <div className="space-y-1">
-          <span className="text-[10px] uppercase font-bold text-muted-foreground">Carga Horária / SLA</span>
-          <p className="text-sm font-semibold">Carga: {profile?.cargaAtendimentosAtivos ?? 0} ativas</p>
-          <p className="text-xs text-muted-foreground">SLA de Resposta: {profile?.slaMinutos ?? 15} min</p>
+          <span className="text-[10px] uppercase font-bold text-muted-foreground">Atendimentos Ativos</span>
+          <p className="text-sm font-semibold">{profile?.cargaAtendimentosAtivos ?? 0} Ativos</p>
+          <p className="text-xs text-muted-foreground">Verifique na aba conversas</p>
         </div>
       </div>
 
       <div className="grid md:grid-cols-[220px_1fr] gap-6">
-        <aside className="md:sticky md:top-20 self-start bg-card border rounded-2xl p-2">
+        <aside className="flex flex-row md:flex-col overflow-x-auto md:overflow-visible gap-2 md:gap-1 p-2 bg-card border rounded-2xl md:sticky md:top-20 self-start scrollbar-none shrink-0">
           {nav.map((n) => {
             const Icon = n.icon;
             const ativo = secao === n.k;
@@ -663,11 +663,20 @@ export function AreaMadrinha({ secaoInicial = "cadastro" }: { secaoInicial?: Sec
               <button
                 key={n.k}
                 onClick={() => setSecao(n.k)}
-                className={`w-full text-left flex items-center gap-3 px-3 py-3 rounded-xl text-sm transition ${ativo ? "bg-[var(--moss)] text-white font-medium" : "hover:bg-muted"}`}
+                className={`whitespace-nowrap flex items-center gap-2 md:gap-3 px-4 py-2.5 md:px-3 md:py-3 rounded-xl text-sm transition ${
+                  ativo
+                    ? "bg-[var(--moss)] text-white font-medium shadow-xs"
+                    : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                }`}
               >
-                <Icon size={16} /> {n.label}
+                <Icon size={16} className="shrink-0" />
+                <span>{n.label}</span>
                 {n.k === "solicitacoes" && solicitacoesApi.length > 0 && (
-                  <span className={`ml-auto font-sans font-bold text-xs px-2 py-0.5 rounded-full ${ativo ? "bg-white text-[var(--moss)]" : "bg-red-500 text-white"}`}>
+                  <span
+                    className={`font-sans font-bold text-[10px] px-1.5 py-0.5 rounded-full ${
+                      ativo ? "bg-white text-[var(--moss)]" : "bg-red-500 text-white"
+                    }`}
+                  >
                     {solicitacoesApi.length}
                   </span>
                 )}
@@ -1368,7 +1377,7 @@ function Ganhos({
           <p className="text-sm text-muted-foreground mb-4">Carregando dados...</p>
         )}
         {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
-        <div className="grid sm:grid-cols-2 gap-4 text-sm">
+        <div className="space-y-1 text-sm">
           <Linha k="Total bruto recebido" v={`R$ ${totais.bruto.toFixed(2)}`} />
           <Linha k="Desconto da plataforma (15%)" v={`- R$ ${totais.comissao.toFixed(2)}`} />
           <Linha k="Total líquido" v={`R$ ${totais.liquido.toFixed(2)}`} />
@@ -1379,7 +1388,7 @@ function Ganhos({
       </Card>
 
       <Card title="Histórico de serviços prestados" icon={Calendar}>
-        <div className="overflow-x-auto -mx-2">
+        <div className="overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
           <table className="w-full text-sm min-w-[520px]">
             <thead>
               <tr className="text-left text-xs uppercase text-muted-foreground tracking-wider">
@@ -1480,6 +1489,7 @@ function KPI({
 }
 
 function Conversas({ token }: { token: string }) {
+  const auth = useAuth();
   const [sessoes, setSessoes] = useState<any[]>([]);
   const [demandasDisponiveis, setDemandasDisponiveis] = useState<any[]>([]);
   const [sessaoSelecionada, setSessaoSelecionada] = useState<any | null>(null);
@@ -1496,12 +1506,180 @@ function Conversas({ token }: { token: string }) {
   const streamRef = useRef<MediaStream | null>(null);
   const lastStatusRef = useRef<string | null>(null);
 
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const lastSignalTimeRef = useRef<string>(new Date().toISOString());
+  const stopWaveformRef = useRef<(() => void) | null>(null);
+
+  const cleanupWebRtc = useCallback(() => {
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.remove();
+      remoteAudioRef.current = null;
+    }
+    if (stopWaveformRef.current) {
+      stopWaveformRef.current();
+      stopWaveformRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+  }, []);
+
+  const startWaveformAnalysis = useCallback((stream: MediaStream) => {
+    let animationFrameId: number;
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const audioContext = new AudioContextClass();
+      audioContextRef.current = audioContext;
+
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      const draw = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) {
+          animationFrameId = requestAnimationFrame(draw);
+          return;
+        }
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        const width = canvas.width;
+        const height = canvas.height;
+
+        analyser.getByteFrequencyData(dataArray);
+
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = "rgba(16, 185, 129, 0.05)";
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.15)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, height / 2);
+        ctx.lineTo(width, height / 2);
+        ctx.stroke();
+
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = "#10b981";
+        ctx.beginPath();
+
+        const sliceWidth = width / bufferLength;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          const v = dataArray[i] / 128.0;
+          const y = (v * height) / 2;
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+          x += sliceWidth;
+        }
+
+        ctx.lineTo(width, height / 2);
+        ctx.stroke();
+
+        animationFrameId = requestAnimationFrame(draw);
+      };
+
+      draw();
+    } catch (e) {
+      console.error("Waveform drawing error:", e);
+    }
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+  }, []);
+
+  const handleOfferRecebido = useCallback(async (sdp: string, sessaoId: number) => {
+    try {
+      cleanupWebRtc();
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStreamRef.current = stream;
+      streamRef.current = stream;
+
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      });
+      peerConnectionRef.current = pc;
+
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+      pc.onicecandidate = async (event) => {
+        if (event.candidate && token) {
+          await api.post(`/chat/sessoes/${sessaoId}/webrtc/signal`, {
+            type: "candidate",
+            candidate: JSON.stringify(event.candidate)
+          }, { headers: { Authorization: `Bearer ${token}` } });
+        }
+      };
+
+      pc.ontrack = (event) => {
+        if (!remoteAudioRef.current) {
+          const audio = document.createElement("audio");
+          audio.autoplay = true;
+          remoteAudioRef.current = audio;
+          document.body.appendChild(audio);
+        }
+        remoteAudioRef.current.srcObject = event.streams[0];
+      };
+
+      await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp }));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      if (token) {
+        await api.post(`/chat/sessoes/${sessaoId}/webrtc/signal`, {
+          type: "answer",
+          sdp: answer.sdp
+        }, { headers: { Authorization: `Bearer ${token}` } });
+      }
+
+      stopWaveformRef.current = startWaveformAnalysis(stream);
+    } catch (e) {
+      console.error("Erro ao processar offer WebRTC:", e);
+    }
+  }, [token, cleanupWebRtc, startWaveformAnalysis]);
+
+  const handleCandidateRecebido = useCallback(async (candidateStr: string) => {
+    const pc = peerConnectionRef.current;
+    if (pc) {
+      try {
+        const candidateJson = JSON.parse(candidateStr);
+        await pc.addIceCandidate(new RTCIceCandidate(candidateJson));
+      } catch (e) {
+        console.error("Erro ao adicionar ICE candidate:", e);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!sessaoSelecionada || !(sessaoSelecionada.servicoTipo.toLowerCase().includes("liga") || sessaoSelecionada.servicoTipo.toLowerCase().includes("suporte"))) {
       lastStatusRef.current = null;
+      cleanupWebRtc();
       return;
     }
 
+    const sessaoId = sessaoSelecionada.id || sessaoSelecionada.Id;
     const status = sessaoSelecionada.status;
     const prevStatus = lastStatusRef.current;
     lastStatusRef.current = status;
@@ -1511,101 +1689,46 @@ function Conversas({ token }: { token: string }) {
         playConnectTone();
       }
 
-      let animationFrameId: number;
-      let analyser: AnalyserNode;
-      let dataArray: Uint8Array;
+      lastSignalTimeRef.current = new Date(Date.now() - 5000).toISOString();
 
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        console.warn("MediaDevices or getUserMedia is not supported in this context (requires HTTPS or localhost).");
-      } else {
-        navigator.mediaDevices.getUserMedia({ audio: true })
-          .then(stream => {
-            streamRef.current = stream;
-            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-            const audioContext = new AudioContextClass();
-            audioContextRef.current = audioContext;
-
-            const source = audioContext.createMediaStreamSource(stream);
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
-            source.connect(analyser);
-
-            const bufferLength = analyser.frequencyBinCount;
-            dataArray = new Uint8Array(bufferLength);
-
-            const draw = () => {
-              const canvas = canvasRef.current;
-              if (!canvas) {
-                animationFrameId = requestAnimationFrame(draw);
-                return;
-              }
-              const ctx = canvas.getContext("2d");
-              if (!ctx) return;
-
-              const width = canvas.width;
-              const height = canvas.height;
-
-              analyser.getByteFrequencyData(dataArray as any);
-
-              ctx.clearRect(0, 0, width, height);
-              
-              // Draw gradient background
-              ctx.fillStyle = "rgba(16, 185, 129, 0.05)";
-              ctx.fillRect(0, 0, width, height);
-
-              // Draw center baseline
-              ctx.strokeStyle = "rgba(16, 185, 129, 0.15)";
-              ctx.lineWidth = 1;
-              ctx.beginPath();
-              ctx.moveTo(0, height / 2);
-              ctx.lineTo(width, height / 2);
-              ctx.stroke();
-
-              // Draw wave
-              ctx.lineWidth = 2.5;
-              ctx.strokeStyle = "#10b981";
-              ctx.beginPath();
-
-              const sliceWidth = width / bufferLength;
-              let x = 0;
-
-              for (let i = 0; i < bufferLength; i++) {
-                const v = dataArray[i] / 128.0;
-                const y = (v * height) / 2;
-
-                if (i === 0) {
-                  ctx.moveTo(x, y);
-                } else {
-                  ctx.lineTo(x, y);
-                }
-
-                x += sliceWidth;
-              }
-
-              ctx.lineTo(width, height / 2);
-              ctx.stroke();
-
-              animationFrameId = requestAnimationFrame(draw);
-            };
-
-            draw();
-          })
-          .catch(err => {
-            console.error("Error accessing microphone:", err);
+      const pollSignals = async () => {
+        try {
+          const res = await api.get(`/chat/sessoes/${sessaoId}/webrtc/signals?sinceUtc=${lastSignalTimeRef.current}`, {
+            headers: { Authorization: `Bearer ${token}` }
           });
-      }
-
-      return () => {
-        if (animationFrameId) cancelAnimationFrame(animationFrameId);
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
-        }
-        if (audioContextRef.current) {
-          audioContextRef.current.close();
+          const signals = res.data || [];
+          if (signals.length > 0) {
+            const maxTimestamp = new Date(Math.max(...signals.map((s: any) => new Date(s.timestamp).getTime())));
+            lastSignalTimeRef.current = new Date(maxTimestamp.getTime() + 10).toISOString();
+            
+            for (const signal of signals) {
+              if (signal.senderId === auth.user?.id) continue;
+              
+              if (signal.type === "offer") {
+                await handleOfferRecebido(signal.sdp, sessaoId);
+              } else if (signal.type === "candidate") {
+                await handleCandidateRecebido(signal.candidate);
+              } else if (signal.type === "hangup") {
+                cleanupWebRtc();
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Erro ao obter sinais WebRTC:", e);
         }
       };
+
+      const interval = setInterval(pollSignals, 2000);
+      void pollSignals();
+
+      return () => {
+        clearInterval(interval);
+        cleanupWebRtc();
+      };
+    } else {
+      cleanupWebRtc();
     }
-  }, [sessaoSelecionada?.status, (sessaoSelecionada?.id || sessaoSelecionada?.Id)]);
+  }, [sessaoSelecionada?.status, sessaoSelecionada?.id, sessaoSelecionada?.Id, token, handleOfferRecebido, handleCandidateRecebido, cleanupWebRtc]);
 
   const handleSelectSessao = useCallback((sessao: any) => {
     setSessaoSelecionada(sessao);
@@ -1638,7 +1761,9 @@ function Conversas({ token }: { token: string }) {
           setSessaoSelecionada(matchingSess);
         }
       } else if (resSess.data.length > 0 && !sessaoSelecionada) {
-        handleSelectSessao(resSess.data[0]);
+        if (typeof window !== "undefined" && window.innerWidth >= 768) {
+          handleSelectSessao(resSess.data[0]);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -1767,8 +1892,8 @@ function Conversas({ token }: { token: string }) {
         <div className="grid md:grid-cols-3 gap-6">
           
           {/* List of Sessions */}
-          <div className="md:col-span-1 border rounded-2xl p-3 space-y-4 h-[450px] overflow-y-auto bg-card/50">
-            {/* 1. Demandas do Time */}
+          <div className={`md:col-span-1 border rounded-2xl p-3 space-y-4 h-[450px] overflow-y-auto bg-card/50 ${sessaoSelecionada ? "hidden md:block" : "block"}`}>
+            {/* 1. Demandas do Time
             <div>
               <div className="flex items-center justify-between mb-2 px-1">
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -1841,7 +1966,7 @@ function Conversas({ token }: { token: string }) {
               )}
             </div>
 
-            <hr className="border-border/60" />
+            <hr className="border-border/60" /> */}
 
             {/* 2. Meus Atendimentos */}
             <div>
@@ -1911,14 +2036,23 @@ function Conversas({ token }: { token: string }) {
           </div>
 
           {/* Chat Window */}
-          <div className="md:col-span-2 border rounded-2xl flex flex-col h-[450px] overflow-hidden bg-secondary/5">
+          <div className={`md:col-span-2 border rounded-2xl flex flex-col h-[450px] overflow-hidden bg-secondary/5 ${sessaoSelecionada ? "flex" : "hidden md:flex"}`}>
             {sessaoSelecionada ? (
               <>
                 {/* Chat window header */}
                 <div className="p-3 border-b bg-card flex justify-between items-center text-xs">
-                  <div>
-                    <span className="font-semibold">{sessaoSelecionada.viajanteNome}</span>
-                    <span className="text-muted-foreground ml-1">({sessaoSelecionada.servicoTipo})</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setSessaoSelecionada(null)}
+                      className="md:hidden p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition cursor-pointer"
+                      aria-label="Voltar para a lista de atendimentos"
+                    >
+                      <ArrowLeft size={16} />
+                    </button>
+                    <div>
+                      <span className="font-semibold">{sessaoSelecionada.viajanteNome}</span>
+                      <span className="text-muted-foreground ml-1">({sessaoSelecionada.servicoTipo})</span>
+                    </div>
                   </div>
                   {sessaoSelecionada.status === "Pendente" && !sessaoSelecionada.respondida && (
                     <span className="text-red-600 font-bold bg-red-50 border border-red-100 px-2 py-0.5 rounded animate-pulse">
@@ -1926,6 +2060,20 @@ function Conversas({ token }: { token: string }) {
                     </span>
                   )}
                 </div>
+
+                {(sessaoSelecionada.pontoEncontro || sessaoSelecionada.duvidaInicial || sessaoSelecionada.aeroporto) && (
+                  <div className="px-4 py-2 bg-amber-500/10 border-b text-[10px] text-foreground flex flex-wrap gap-x-4 gap-y-1 shrink-0">
+                    {sessaoSelecionada.aeroporto && (
+                      <span className="flex items-center gap-1">✈️ <strong>Aeroporto:</strong> {sessaoSelecionada.aeroporto}</span>
+                    )}
+                    {sessaoSelecionada.pontoEncontro && (
+                      <span className="flex items-center gap-1">📍 <strong>Ponto de Encontro:</strong> {sessaoSelecionada.pontoEncontro}</span>
+                    )}
+                    {sessaoSelecionada.duvidaInicial && (
+                      <span className="w-full flex items-start gap-1">❓ <strong>Dúvida Inicial:</strong> {sessaoSelecionada.duvidaInicial}</span>
+                    )}
+                  </div>
+                )}
 
                 {/* Messages body */}
                 <div className="flex-1 p-3 overflow-y-auto space-y-2">

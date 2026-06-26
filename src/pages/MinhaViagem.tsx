@@ -93,6 +93,7 @@ type Transacao = {
 
 type SessaoChat = {
   id: number;
+  Id?: number;
   usuariaId: number;
   madrinhaId?: number | null;
   servicoTipo: string;
@@ -110,6 +111,8 @@ type SessaoChat = {
   locaisVisitados?: string | null;
   quantidadeHoras?: number | null;
   avaliada?: boolean;
+  pontoEncontro?: string | null;
+  duvidaInicial?: string | null;
 };
 
 type Mensagem = {
@@ -156,133 +159,162 @@ export function MinhaViagem() {
   const streamRef = useRef<MediaStream | null>(null);
   const activeDialToneRef = useRef<{ stop: () => void } | null>(null);
 
+  const lastSignalTimeRef = useRef<string>(new Date().toISOString());
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const cleanupWebRtc = useCallback(() => {
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.remove();
+      remoteAudioRef.current = null;
+    }
+  }, []);
+
+  const iniciarChamadaWebRtc = useCallback(async (sessaoId: number) => {
+    try {
+      cleanupWebRtc();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStreamRef.current = stream;
+      streamRef.current = stream; // For waveform mock
+
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      });
+      peerConnectionRef.current = pc;
+
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+      pc.onicecandidate = async (event) => {
+        if (event.candidate && auth.token) {
+          await api.post(`/chat/sessoes/${sessaoId}/webrtc/signal`, {
+            type: "candidate",
+            candidate: JSON.stringify(event.candidate)
+          }, { headers: { Authorization: `Bearer ${auth.token}` } });
+        }
+      };
+
+      pc.ontrack = (event) => {
+        if (!remoteAudioRef.current) {
+          const audio = document.createElement("audio");
+          audio.autoplay = true;
+          remoteAudioRef.current = audio;
+          document.body.appendChild(audio);
+        }
+        remoteAudioRef.current.srcObject = event.streams[0];
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      if (auth.token) {
+        await api.post(`/chat/sessoes/${sessaoId}/webrtc/signal`, {
+          type: "offer",
+          sdp: offer.sdp
+        }, { headers: { Authorization: `Bearer ${auth.token}` } });
+      }
+    } catch (err) {
+      console.error("Erro ao iniciar chamada WebRTC:", err);
+    }
+  }, [auth.token, cleanupWebRtc]);
+
+  const handleAnswerRecebido = useCallback(async (sdp: string) => {
+    const pc = peerConnectionRef.current;
+    if (pc) {
+      await pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp }));
+    }
+  }, []);
+
+  const handleCandidateRecebido = useCallback(async (candidateStr: string) => {
+    const pc = peerConnectionRef.current;
+    if (pc) {
+      try {
+        const candidateJson = JSON.parse(candidateStr);
+        await pc.addIceCandidate(new RTCIceCandidate(candidateJson));
+      } catch (e) {
+        console.error("Erro ao adicionar ICE candidate:", e);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!sessaoSelecionada || !sessaoSelecionada.servicoTipo.toLowerCase().includes("liga")) {
-      // Cleanup when not in call
       if (activeDialToneRef.current) {
         activeDialToneRef.current.stop();
         activeDialToneRef.current = null;
       }
+      cleanupWebRtc();
       return;
     }
 
+    const sessaoId = sessaoSelecionada.id || sessaoSelecionada.Id || 0;
     const status = sessaoSelecionada.status;
 
     if (status === "Pendente") {
-      // Play dialing tone
       if (!activeDialToneRef.current) {
         activeDialToneRef.current = playDialingTone();
       }
     } else if (status === "Ativa") {
-      // Stop dialing tone, play connect tone
       if (activeDialToneRef.current) {
         activeDialToneRef.current.stop();
         activeDialToneRef.current = null;
         playConnectTone();
       }
-
-      // Start capturing microphone and drawing waveform
-      let animationFrameId: number;
-      let analyser: AnalyserNode;
-      let dataArray: Uint8Array;
-
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        console.warn("MediaDevices or getUserMedia is not supported in this context (requires HTTPS or localhost).");
-      } else {
-        navigator.mediaDevices.getUserMedia({ audio: true })
-          .then(stream => {
-            streamRef.current = stream;
-            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-            const audioContext = new AudioContextClass();
-            audioContextRef.current = audioContext;
-
-            const source = audioContext.createMediaStreamSource(stream);
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
-            source.connect(analyser);
-
-            const bufferLength = analyser.frequencyBinCount;
-            dataArray = new Uint8Array(bufferLength);
-
-            const draw = () => {
-              const canvas = canvasRef.current;
-              if (!canvas) {
-                animationFrameId = requestAnimationFrame(draw);
-                return;
-              }
-              const ctx = canvas.getContext("2d");
-              if (!ctx) return;
-
-              const width = canvas.width;
-              const height = canvas.height;
-
-              analyser.getByteFrequencyData(dataArray as any);
-
-              ctx.clearRect(0, 0, width, height);
-              
-              // Draw gradient background
-              ctx.fillStyle = "rgba(16, 185, 129, 0.05)";
-              ctx.fillRect(0, 0, width, height);
-
-              // Draw center baseline
-              ctx.strokeStyle = "rgba(16, 185, 129, 0.15)";
-              ctx.lineWidth = 1;
-              ctx.beginPath();
-              ctx.moveTo(0, height / 2);
-              ctx.lineTo(width, height / 2);
-              ctx.stroke();
-
-              // Draw wave
-              ctx.lineWidth = 2.5;
-              ctx.strokeStyle = "#10b981";
-              ctx.beginPath();
-
-              const sliceWidth = width / bufferLength;
-              let x = 0;
-
-              for (let i = 0; i < bufferLength; i++) {
-                const v = dataArray[i] / 128.0;
-                const y = (v * height) / 2;
-
-                if (i === 0) {
-                  ctx.moveTo(x, y);
-                } else {
-                  ctx.lineTo(x, y);
-                }
-
-                x += sliceWidth;
-              }
-
-              ctx.lineTo(width, height / 2);
-              ctx.stroke();
-
-              animationFrameId = requestAnimationFrame(draw);
-            };
-
-            draw();
-          })
-          .catch(err => {
-            console.error("Error accessing microphone:", err);
-          });
-      }
-
-      return () => {
-        if (animationFrameId) cancelAnimationFrame(animationFrameId);
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
-        }
-        if (audioContextRef.current) {
-          audioContextRef.current.close();
-        }
-      };
     } else {
-      // Finalizada or other status
       if (activeDialToneRef.current) {
         activeDialToneRef.current.stop();
         activeDialToneRef.current = null;
       }
     }
-  }, [sessaoSelecionada?.status, sessaoSelecionada?.id]);
+
+    lastSignalTimeRef.current = new Date(Date.now() - 5000).toISOString();
+
+    const pollSignals = async () => {
+      try {
+        const res = await api.get(`/chat/sessoes/${sessaoId}/webrtc/signals?sinceUtc=${lastSignalTimeRef.current}`, {
+          headers: { Authorization: `Bearer ${auth.token}` }
+        });
+        const signals = res.data || [];
+        if (signals.length > 0) {
+          const maxTimestamp = new Date(Math.max(...signals.map((s: any) => new Date(s.timestamp).getTime())));
+          lastSignalTimeRef.current = new Date(maxTimestamp.getTime() + 10).toISOString();
+          
+          for (const signal of signals) {
+            if (signal.senderId === auth.user?.id) continue;
+            
+            if (signal.type === "answer") {
+              await handleAnswerRecebido(signal.sdp);
+            } else if (signal.type === "candidate") {
+              await handleCandidateRecebido(signal.candidate);
+            } else if (signal.type === "hangup") {
+              cleanupWebRtc();
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Erro ao obter sinais WebRTC:", e);
+      }
+    };
+
+    const interval = setInterval(pollSignals, 2000);
+
+    if (status === "Ativa" && !peerConnectionRef.current) {
+      void iniciarChamadaWebRtc(sessaoId);
+    }
+
+    return () => {
+      clearInterval(interval);
+      cleanupWebRtc();
+    };
+  }, [sessaoSelecionada?.status, sessaoSelecionada?.id, auth.token, iniciarChamadaWebRtc, handleAnswerRecebido, handleCandidateRecebido, cleanupWebRtc]);
 
   // Ref cache to prevent flickering
   const mensagensCacheRef = useRef<Record<number, Mensagem[]>>({});
@@ -316,6 +348,12 @@ export function MinhaViagem() {
   const [aeroporto, setAeroporto] = useState("");
   const [locaisVisitados, setLocaisVisitados] = useState("");
   const [quantidadeHoras, setQuantidadeHoras] = useState(4);
+  const [duvidaInicial, setDuvidaInicial] = useState("");
+  const [pontoEncontro, setPontoEncontro] = useState("");
+  const [acompanhamentoDataInicio, setAcompanhamentoDataInicio] = useState("");
+  const [acompanhamentoDataFim, setAcompanhamentoDataFim] = useState("");
+  const [acompanhamentoHoraInicio, setAcompanhamentoHoraInicio] = useState("");
+  const [acompanhamentoHoraFim, setAcompanhamentoHoraFim] = useState("");
 
   const fetchCoreData = useCallback(async (targetSessaoId?: number) => {
     if (!auth.token) return;
@@ -489,6 +527,14 @@ export function MinhaViagem() {
     setIniciandoServico(true);
     setError("");
     try {
+      let calculatedHours = quantidadeHoras;
+      if (modalServicoAtivo.toLowerCase().includes("acompanhamento") && acompanhamentoDataInicio && acompanhamentoDataFim) {
+        const start = new Date(`${acompanhamentoDataInicio}T${acompanhamentoHoraInicio || "00:00"}`);
+        const end = new Date(`${acompanhamentoDataFim}T${acompanhamentoHoraFim || "00:00"}`);
+        const diffHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+        calculatedHours = Math.max(1, Math.ceil(diffHours));
+      }
+
       const res = await api.post<{ sessaoId: number }>(
         "/chat/sessoes/iniciar-servico",
         {
@@ -496,7 +542,13 @@ export function MinhaViagem() {
           horarioDesembarque: modalServicoAtivo.toLowerCase().includes("busca") ? horarioDesembarque : null,
           aeroporto: modalServicoAtivo.toLowerCase().includes("busca") ? aeroporto : null,
           locaisVisitados: modalServicoAtivo.toLowerCase().includes("acompanhamento") ? locaisVisitados : null,
-          quantidadeHoras: modalServicoAtivo.toLowerCase().includes("acompanhamento") ? quantidadeHoras : null
+          quantidadeHoras: modalServicoAtivo.toLowerCase().includes("acompanhamento") ? calculatedHours : null,
+          pontoEncontro: modalServicoAtivo.toLowerCase().includes("acompanhamento") ? pontoEncontro : null,
+          duvidaInicial: modalServicoAtivo.toLowerCase().includes("dicas") ? duvidaInicial : null,
+          acompanhamentoDataInicio: modalServicoAtivo.toLowerCase().includes("acompanhamento") && acompanhamentoDataInicio ? new Date(`${acompanhamentoDataInicio}T${acompanhamentoHoraInicio || "00:00"}`).toISOString() : null,
+          acompanhamentoDataFim: modalServicoAtivo.toLowerCase().includes("acompanhamento") && acompanhamentoDataFim ? new Date(`${acompanhamentoDataFim}T${acompanhamentoHoraFim || "00:00"}`).toISOString() : null,
+          acompanhamentoHoraInicio: modalServicoAtivo.toLowerCase().includes("acompanhamento") ? acompanhamentoHoraInicio : null,
+          acompanhamentoHoraFim: modalServicoAtivo.toLowerCase().includes("acompanhamento") ? acompanhamentoHoraFim : null
         },
         { headers: { Authorization: `Bearer ${auth.token}` } }
       );
@@ -509,6 +561,12 @@ export function MinhaViagem() {
       setAeroporto("");
       setLocaisVisitados("");
       setQuantidadeHoras(4);
+      setDuvidaInicial("");
+      setPontoEncontro("");
+      setAcompanhamentoDataInicio("");
+      setAcompanhamentoDataFim("");
+      setAcompanhamentoHoraInicio("");
+      setAcompanhamentoHoraFim("");
 
       // Refresh and select the new session
       await fetchCoreData(newSessId);
@@ -632,14 +690,14 @@ export function MinhaViagem() {
             <div className="space-y-2">
               <h2 className="text-2xl font-serif">Destino e Viagem não localizados</h2>
               <p className="text-muted-foreground">
-                Você ainda não tem uma viagem ativa. Digite "Recife" e adquira um pacote de créditos para desbloquear o suporte local!
+                <strong>Você ainda não tem uma viagem cadastrada.</strong> <br />Vá para a página de destinos, cadastre um destino e compre um pacote de créditos para desbloquear o suporte local!
               </p>
             </div>
             <button
               onClick={() => navigate({ to: "/busca" })}
               className="inline-flex items-center justify-center gap-2 bg-[var(--moss)] text-white rounded-full px-7 py-4 font-medium hover:opacity-90 cursor-pointer shadow-sm"
             >
-              Ir para Destinos e Pacotes <ArrowRight size={18} />
+              Ir para Destinos<ArrowRight size={18} />
             </button>
           </div>
         ) : (
@@ -747,8 +805,10 @@ export function MinhaViagem() {
               </div>
 
               {/* Right Column (1/3 width): Support Chat */}
-              <div className="lg:col-span-1">
-                <div className="bg-card border rounded-[2rem] shadow-sm h-[560px] overflow-hidden relative flex bg-secondary/5 flex-col w-full">
+              <div className={`lg:col-span-1 ${sessaoSelecionada ? "fixed inset-0 z-50 bg-background lg:relative lg:inset-auto lg:z-auto lg:bg-transparent" : ""}`}>
+                <div className={`bg-card border rounded-[2rem] shadow-sm h-[560px] overflow-hidden relative flex bg-secondary/5 flex-col w-full ${
+                  sessaoSelecionada ? "h-full rounded-none border-0 lg:h-[560px] lg:rounded-[2rem] lg:border" : ""
+                }`}>
                   {/* SCREEN 1: Lista de Conversas (Full Width) */}
                   <div className={`w-full h-full flex flex-col absolute inset-0 transition-all duration-300 ${
                 sessaoSelecionada ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100"
@@ -808,7 +868,9 @@ export function MinhaViagem() {
                 {sessaoSelecionada && (
                   <>
                     {/* Chat Header */}
-                    <div className="p-4 border-b bg-secondary/15 flex items-center justify-between gap-3 shrink-0">
+                    <div className={`p-4 border-b bg-secondary/15 flex items-center justify-between gap-3 shrink-0 ${
+                      sessaoSelecionada ? "pt-8 lg:pt-4" : ""
+                    }`}>
                       <div className="flex items-center gap-3 min-w-0">
                         <button
                           onClick={() => setSessaoSelecionada(null)}
@@ -817,9 +879,10 @@ export function MinhaViagem() {
                         >
                           <ArrowLeft size={20} />
                         </button>
-                        <div
-                          className="w-9 h-9 rounded-full border border-[var(--moss)] bg-cover bg-center shrink-0"
-                          style={{ backgroundImage: `url(${sessaoSelecionada.madrinhaFotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'})` }}
+                        <img
+                          src={sessaoSelecionada.madrinhaFotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'}
+                          alt={sessaoSelecionada.madrinhaNome || "Madrinha"}
+                          className="w-9 h-9 rounded-full border border-[var(--moss)] object-cover shrink-0"
                         />
                         <div className="min-w-0">
                           <p className="font-semibold text-xs truncate">
@@ -850,6 +913,20 @@ export function MinhaViagem() {
                         )}
                       </div>
                     </div>
+
+                    {(sessaoSelecionada.pontoEncontro || sessaoSelecionada.duvidaInicial || sessaoSelecionada.aeroporto) && (
+                      <div className="px-6 py-2 bg-amber-500/10 border-b text-[10px] text-foreground flex flex-wrap gap-x-4 gap-y-1 shrink-0">
+                        {sessaoSelecionada.aeroporto && (
+                          <span className="flex items-center gap-1">✈️ <strong>Aeroporto:</strong> {sessaoSelecionada.aeroporto}</span>
+                        )}
+                        {sessaoSelecionada.pontoEncontro && (
+                          <span className="flex items-center gap-1">📍 <strong>Ponto de Encontro:</strong> {sessaoSelecionada.pontoEncontro}</span>
+                        )}
+                        {sessaoSelecionada.duvidaInicial && (
+                          <span className="w-full flex items-start gap-1">❓ <strong>Dúvida Inicial:</strong> {sessaoSelecionada.duvidaInicial}</span>
+                        )}
+                      </div>
+                    )}
 
                     {/* Chat Window Messages / Interface */}
                     <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-secondary/5">
@@ -1044,9 +1121,10 @@ export function MinhaViagem() {
                   }}
                   className="border rounded-2xl p-5 hover:border-[var(--moss)] hover:shadow-md transition bg-background flex flex-col items-center text-center space-y-4 cursor-pointer group text-left"
                 >
-                  <div
-                    className="w-20 h-20 rounded-full border-2 border-[var(--moss)]/20 bg-cover bg-center shadow-inner group-hover:scale-105 transition"
-                    style={{ backgroundImage: `url(${m.fotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'})` }}
+                  <img
+                    src={m.fotoPerfilUrl || 'https://randomuser.me/api/portraits/women/44.jpg'}
+                    alt={m.nome}
+                    className="w-20 h-20 rounded-full border-2 border-[var(--moss)]/20 object-cover shadow-inner group-hover:scale-105 transition"
                   />
                   <div className="space-y-1 text-center">
                     <h4 className="font-bold text-sm text-foreground group-hover:text-[var(--moss)] transition">{m.nome}</h4>
@@ -1112,7 +1190,17 @@ export function MinhaViagem() {
             )}
 
             {modalServicoAtivo.toLowerCase().includes("acompanhamento") && (
-              <div className="space-y-4">
+              <div className="space-y-4 max-h-[300px] overflow-y-auto px-1">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Ponto de Encontro</label>
+                  <input
+                    required
+                    value={pontoEncontro}
+                    onChange={(e) => setPontoEncontro(e.target.value)}
+                    placeholder="Ex: Lobby do Hotel, ou Local X"
+                    className="w-full bg-secondary border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--moss)] focus:outline-none"
+                  />
+                </div>
                 <div>
                   <label className="block text-xs font-semibold text-muted-foreground mb-1">Locais / Roteiro a Visitar</label>
                   <textarea
@@ -1120,39 +1208,92 @@ export function MinhaViagem() {
                     value={locaisVisitados}
                     onChange={(e) => setLocaisVisitados(e.target.value)}
                     placeholder="Ex: Marco Zero, Olinda Histórica, Praia de Boa Viagem..."
-                    rows={3}
+                    rows={2}
                     className="w-full bg-secondary border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--moss)] focus:outline-none resize-none"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Quantidade de Horas</label>
-                  <div className="flex items-center gap-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1">Data de Início</label>
                     <input
                       required
-                      type="number"
-                      min={1}
-                      max={12}
-                      value={quantidadeHoras}
-                      onChange={(e) => setQuantidadeHoras(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-24 bg-secondary border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--moss)] focus:outline-none text-center"
+                      type="date"
+                      value={acompanhamentoDataInicio}
+                      onChange={(e) => setAcompanhamentoDataInicio(e.target.value)}
+                      className="w-full bg-secondary border rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[var(--moss)] focus:outline-none"
                     />
-                    <span className="text-xs text-muted-foreground">horas de acompanhamento</span>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1">Hora de Início</label>
+                    <input
+                      required
+                      type="time"
+                      value={acompanhamentoHoraInicio}
+                      onChange={(e) => setAcompanhamentoHoraInicio(e.target.value)}
+                      className="w-full bg-secondary border rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[var(--moss)] focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1">Data de Término</label>
+                    <input
+                      required
+                      type="date"
+                      value={acompanhamentoDataFim}
+                      onChange={(e) => setAcompanhamentoDataFim(e.target.value)}
+                      className="w-full bg-secondary border rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[var(--moss)] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1">Hora de Término</label>
+                    <input
+                      required
+                      type="time"
+                      value={acompanhamentoHoraFim}
+                      onChange={(e) => setAcompanhamentoHoraFim(e.target.value)}
+                      className="w-full bg-secondary border rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[var(--moss)] focus:outline-none"
+                    />
                   </div>
                 </div>
                 <div className="p-3 bg-[var(--moss)]/5 border border-[var(--moss)]/10 rounded-xl flex items-center justify-between text-xs">
                   <span>Custo total calculado:</span>
-                  <span className="font-bold text-[var(--moss)]">{quantidadeHoras * 5} créditos</span>
+                  <span className="font-bold text-[var(--moss)]">
+                    {(() => {
+                      if (!acompanhamentoDataInicio || !acompanhamentoDataFim) return "—";
+                      const start = new Date(`${acompanhamentoDataInicio}T${acompanhamentoHoraInicio || "00:00"}`);
+                      const end = new Date(`${acompanhamentoDataFim}T${acompanhamentoHoraFim || "00:00"}`);
+                      const diffHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+                      const hours = Math.max(1, Math.ceil(diffHours));
+                      return isNaN(hours) ? "—" : `${hours * 5} créditos (${hours}h)`;
+                    })()}
+                  </span>
                 </div>
               </div>
             )}
 
-            {(modalServicoAtivo.toLowerCase().includes("dicas") || modalServicoAtivo.toLowerCase().includes("suporte")) && (
+            {modalServicoAtivo.toLowerCase().includes("dicas") && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Dúvida Inicial</label>
+                  <textarea
+                    required
+                    value={duvidaInicial}
+                    onChange={(e) => setDuvidaInicial(e.target.value)}
+                    placeholder="Qual a sua principal dúvida no momento?"
+                    rows={3}
+                    className="w-full bg-secondary border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--moss)] focus:outline-none resize-none"
+                  />
+                </div>
+                <div className="text-xs text-muted-foreground text-center">Custo: <strong>1 crédito</strong></div>
+              </div>
+            )}
+
+            {modalServicoAtivo.toLowerCase().includes("suporte") && (
               <div className="space-y-2 text-center text-xs text-muted-foreground py-4">
-                <p>Este serviço consumirá os créditos correspondentes e abrirá a fila de atendimento.</p>
+                <p>Este serviço consumirá os créditos correspondentes e abrirá a fila de chamada.</p>
                 <p className="font-bold text-foreground">Deseja acionar?</p>
-                <p className="text-xs text-[var(--moss)] font-bold mt-2">
-                  Custo: {modalServicoAtivo.toLowerCase().includes("dicas") ? "1 crédito" : "3 créditos"}
-                </p>
+                <p className="text-xs text-[var(--moss)] font-bold mt-2">Custo: 3 créditos</p>
               </div>
             )}
 
