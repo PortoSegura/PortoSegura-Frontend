@@ -11,7 +11,7 @@
 
 **Porto Segura** não é um site de viagens. É uma plataforma que remove o atrito do medo através de uma rede de apoio, sem perder a autonomia da viagem solo. Desenvolvido exclusivamente para mulheres, nossa solução conecta viajantes a um Time de Madrinhas locais, rigorosamente verificadas e prontas para oferecer suporte técnico e acolhimento.
 
-🚀 **Aplicação em Produção:** [https://portosegura.netlify.app/](https://portosegura.netlify.app/)
+🚀 **Aplicação em Produção:** [https://portosegura.netlify.app/](https://portosegura.netlify.app/)  
 📺 **Vídeos da Aplicação Rodando:** [https://www.youtube.com/@PortoSegura-g3t/videos](https://www.youtube.com/@PortoSegura-g3t/videos)
 
 ### 🧪 Acesso para Testes
