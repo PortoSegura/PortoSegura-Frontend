@@ -66,10 +66,10 @@ export function Carteira() {
     {
       nome: "Imersão Recife",
       creditos: 70,
-      valor: "R$ 400,00",
+      valor: "R$ 430,00",
       valorOriginal: "R$ 490,00",
-      economia: "R$ 90,00",
-      percentualDesconto: 18,
+      economia: "R$ 60,00",
+      percentualDesconto: 13,
       descricao: "Máxima economia para viagens longas ou grupos.",
       popular: false,
       beneficios: ["70 créditos de consumo para contratação de serviços"]

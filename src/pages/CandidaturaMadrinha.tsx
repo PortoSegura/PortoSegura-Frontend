@@ -680,7 +680,7 @@ export function Candidatura() {
               <Row k="Idade" v={form.idade ? `${form.idade} anos` : "—"}/>
               <Row k="Cidade" v={form.cidade && form.estado ? `${form.cidade}, ${form.estado}` : "—"}/>
               <Row k="Anos no local" v={form.anosNoLocal ? `${form.anosNoLocal} anos` : "—"}/>
-              <Row k="Diária" v={`R$ ${form.precoDiaria}`}/>
+              {/* <Row k="Diária" v={`R$ ${form.precoDiaria}`}/> */}
               <Row k="E-mail" v={form.email}/>
               <Row k="Telefone" v={form.telefone}/>
             </div>
