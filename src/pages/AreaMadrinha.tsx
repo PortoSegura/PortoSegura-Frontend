@@ -809,6 +809,7 @@ export function AreaMadrinha({ secaoInicial = "inicio" }: { secaoInicial?: Secao
                   await api.post(`/chat/sessoes/${chamadaTocando.id || chamadaTocando.Id}/aceitar`, {}, {
                     headers: { Authorization: `Bearer ${auth.token}` }
                   });
+                  setChatAbertoExternamente(chamadaTocando.id || chamadaTocando.Id);
                   setChamadaTocando(null);
                   setSecao("conversas");
                 } catch (err: any) {
@@ -1553,6 +1554,7 @@ function Conversas({
   const [ocultarFinalizados, setOcultarFinalizados] = useState(false);
   const [demandasDisponiveis, setDemandasDisponiveis] = useState<any[]>([]);
   const [sessaoSelecionada, setSessaoSelecionada] = useState<any | null>(null);
+  const sessaoSelecionadaIdRef = useRef<number | null>(null);
   const [mensagens, setMensagens] = useState<any[]>([]);
   const [texto, setTexto] = useState("");
   const [loading, setLoading] = useState(true);
@@ -1792,8 +1794,9 @@ function Conversas({
 
   const handleSelectSessao = useCallback((sessao: any) => {
     setSessaoSelecionada(sessao);
-    const sId = sessao.id || sessao.Id;
-    if (mensagensCacheRef.current[sId]) {
+    const sId = sessao ? (sessao.id || sessao.Id) : null;
+    sessaoSelecionadaIdRef.current = sId;
+    if (sId && mensagensCacheRef.current[sId]) {
       setMensagens(mensagensCacheRef.current[sId]);
     } else {
       setMensagens([]);
@@ -1814,13 +1817,13 @@ function Conversas({
       setSessoes(resSess.data);
       setDemandasDisponiveis(resDem.data);
 
-      if (sessaoSelecionada) {
-        const selId = sessaoSelecionada.id || sessaoSelecionada.Id;
+      if (sessaoSelecionadaIdRef.current) {
+        const selId = sessaoSelecionadaIdRef.current;
         const matchingSess = resSess.data.find((s: any) => (s.id || s.Id) === selId);
         if (matchingSess) {
           setSessaoSelecionada(matchingSess);
         }
-      } else if (resSess.data.length > 0 && !sessaoSelecionada) {
+      } else if (resSess.data.length > 0) {
         if (typeof window !== "undefined" && window.innerWidth >= 768) {
           handleSelectSessao(resSess.data[0]);
         }
@@ -1830,11 +1833,11 @@ function Conversas({
     } finally {
       if (!isSilent) setLoading(false);
     }
-  }, [token, sessaoSelecionada, handleSelectSessao]);
+  }, [token, handleSelectSessao]);
 
   const carregarMensagens = useCallback(async (isSilent = false) => {
-    if (!sessaoSelecionada) return;
-    const sId = sessaoSelecionada.id || sessaoSelecionada.Id;
+    const sId = sessaoSelecionadaIdRef.current;
+    if (!sId) return;
     const hasCache = !!mensagensCacheRef.current[sId];
 
     if (!isSilent && !hasCache) setLoadingMsg(true);
@@ -1861,7 +1864,7 @@ function Conversas({
     } finally {
       if (!isSilent) setLoadingMsg(false);
     }
-  }, [token, sessaoSelecionada?.id, sessaoSelecionada?.Id]);
+  }, [token]);
 
   useEffect(() => {
     void carregarSessoes(false);
@@ -1872,14 +1875,14 @@ function Conversas({
   }, [token]);
 
   useEffect(() => {
-    if (sessaoSelecionada) {
+    if (sessaoSelecionadaIdRef.current) {
       void carregarMensagens(false);
       const interval = setInterval(() => {
         void carregarMensagens(true);
       }, 5000);
       return () => clearInterval(interval);
     }
-  }, [sessaoSelecionada?.id, sessaoSelecionada?.Id]);
+  }, [sessaoSelecionadaIdRef.current]);
 
   const aceitarDemanda = async (demandaId: number) => {
     try {
@@ -1887,7 +1890,6 @@ function Conversas({
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Carrega sessões e demandas atualizadas
       const [resSess, resDem] = await Promise.all([
         api.get("/chat/sessoes", {
           headers: { Authorization: `Bearer ${token}` }
@@ -1911,8 +1913,8 @@ function Conversas({
 
   const enviarMensagem = async (e: React.FormEvent) => {
     e.preventDefault();
-    const currentSessId = sessaoSelecionada.id || sessaoSelecionada.Id;
-    if (!sessaoSelecionada || !texto.trim() || enviando) return;
+    const currentSessId = sessaoSelecionadaIdRef.current;
+    if (!currentSessId || !texto.trim() || enviando) return;
 
     setEnviando(true);
     try {
@@ -1984,10 +1986,8 @@ function Conversas({
       ) : (
         <div className="grid md:grid-cols-3 gap-6">
           
-          {/* List of Sessions */}
           <div className={`md:col-span-1 border border-border/40 rounded-2xl p-3 space-y-4 h-[480px] overflow-y-auto bg-secondary/5 ${sessaoSelecionada ? "hidden md:block" : "block"} scrollbar-none`}>
             
-            {/* Meus Atendimentos */}
             <div className="space-y-3">
               <div className="flex items-center justify-between mb-1 px-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 font-sans">
@@ -2014,7 +2014,7 @@ function Conversas({
                 <div className="space-y-2">
                   {sessoesFiltradas.map((s) => {
                     const currentId = s.id || s.Id;
-                    const selId = sessaoSelecionada?.id || sessaoSelecionada?.Id;
+                    const selId = sessaoSelecionadaIdRef.current;
                     const selected = selId === currentId;
                     const hasAlert = s.status === "Pendente" && !s.respondida;
 
@@ -2063,7 +2063,6 @@ function Conversas({
             </div>
           </div>
 
-          {/* Chat Window */}
           <div className={`md:col-span-2 border border-border/40 rounded-2xl flex flex-col h-[480px] overflow-hidden bg-card ${
             sessaoSelecionada 
               ? "fixed inset-0 z-50 bg-background h-full w-full rounded-none border-0 md:relative md:inset-auto md:z-auto md:bg-card md:h-[480px] md:rounded-2xl md:border md:flex" 
@@ -2071,13 +2070,12 @@ function Conversas({
           }`}>
             {sessaoSelecionada ? (
               <>
-                {/* Chat window header */}
                 <div className={`p-4 border-b bg-secondary/15 flex items-center justify-between gap-3 shrink-0 ${
                   sessaoSelecionada ? "pt-8 md:pt-4" : ""
                 }`}>
                   <div className="flex items-center gap-3 min-w-0">
                     <button
-                      onClick={() => setSessaoSelecionada(null)}
+                      onClick={() => handleSelectSessao(null)}
                       className="md:hidden mr-1 text-muted-foreground hover:text-foreground cursor-pointer p-1.5 rounded-full hover:bg-secondary transition shrink-0"
                       aria-label="Voltar para a lista de atendimentos"
                     >
